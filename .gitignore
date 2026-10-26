@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# secrets (never commit)
+.env
+.env.local
+.env.*.local
+clinics/*.env
+clinics/*.vercel.env
+!clinics/clinic.example.env
+
+# misc
+.DS_Store
+coverage/
+.vercel/
