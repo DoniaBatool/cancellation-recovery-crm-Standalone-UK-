@@ -17,6 +17,7 @@ import { formatGBP, formatSlot } from "@/lib/format";
 import { minutesBetween, formatDuration } from "@/lib/time";
 import { cn } from "@/lib/cn";
 import { markExpired } from "./actions";
+import { CardActions } from "./card-actions";
 
 export type BoardCard = {
   id: string;
@@ -33,6 +34,9 @@ export type BoardCard = {
   offerExpiresIso: string | null;
   offeredCount: number;
   notes: string | null;
+  /** Link of the open offer, for reception to share by hand. */
+  offerLink: string | null;
+  bookedAtIso: string | null;
 };
 
 const REFRESH_MS = 30_000;
@@ -133,7 +137,7 @@ function CardView({
           )}
         </p>
       ) : null}
-      {waitingApproval && card.patientPhone ? (
+      {(waitingApproval || card.stage === "slot_recovered") && card.patientPhone ? (
         <a href={`tel:${card.patientPhone}`} className="mt-1 inline-flex min-h-8 items-center gap-1 text-link underline-offset-4 hover:underline">
           <Phone className="h-3.5 w-3.5" aria-hidden="true" />
           {card.patientPhone}
@@ -155,13 +159,14 @@ function CardView({
         </p>
       ) : null}
 
-      {open ? (
-        <div className="mt-2">
+      <div className="mt-2 flex flex-col gap-2">
+        <CardActions card={card} timezone={timezone} />
+        {open ? (
           <Button variant="outline" size="sm" onClick={onClose}>
             Close card
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </article>
   );
 }

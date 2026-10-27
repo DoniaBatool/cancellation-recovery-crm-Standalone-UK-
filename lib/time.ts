@@ -72,3 +72,17 @@ export function formatDuration(minutes: number): string {
   const days = Math.floor(hours / 24);
   return days === 1 ? "1 day" : `${days} days`;
 }
+
+/** Add `days` to a "YYYY-MM-DD" calendar date (no timezone involved). */
+export function addDaysToDate(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  const t = new Date(Date.UTC(y, m - 1, d + days));
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
+}
+
+/** Minutes since local midnight for an instant, as seen in `timeZone`. */
+export function minutesOfDayInZone(value: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(value);
+  const get = (t: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === t)?.value);
+  return get("hour") * 60 + get("minute");
+}

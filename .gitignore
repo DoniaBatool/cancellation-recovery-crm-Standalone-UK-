@@ -20,3 +20,6 @@ clinics/*.vercel.env
 .DS_Store
 coverage/
 .vercel/
+
+# files moved aside for the owner to delete
+_to_delete/

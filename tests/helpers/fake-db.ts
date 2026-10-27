@@ -33,10 +33,24 @@ export function fakeDb(handler: Handler) {
       call.op = "delete";
       return builder;
     };
+    builder.upsert = (payload: unknown) => {
+      call.op = "insert";
+      call.payload = payload;
+      return builder;
+    };
     builder.eq = (column: string, value: unknown) => {
       call.filters.push([column, value]);
       return builder;
     };
+    // Other filters are recorded as "column:op" so tests can assert on them without a real query engine.
+    for (const op of ["in", "neq", "lt", "lte", "gt", "gte", "is", "not"]) {
+      builder[op] = (column: string, value: unknown) => {
+        call.filters.push([`${column}:${op}`, value]);
+        return builder;
+      };
+    }
+    builder.order = () => builder;
+    builder.limit = () => builder;
     builder.maybeSingle = () => Promise.resolve(finish());
     builder.single = () => Promise.resolve(finish());
     builder.then = (resolve: (r: Result) => unknown, reject: (e: unknown) => unknown) =>

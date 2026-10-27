@@ -382,4 +382,20 @@ DO $$ BEGIN
     (SELECT column_default::int FROM information_schema.columns WHERE table_schema='public' AND table_name='clinic_config' AND column_name='offer_expiry_minutes'), 30);
 END $$;
 
+-- Rate limits (migration 0004): service role only
+DO $$ BEGIN
+  PERFORM test.assert_eq('anon cannot run rate_limit_hit',
+    (SELECT has_function_privilege('anon', 'public.rate_limit_hit(text,int,int)', 'EXECUTE'))::int, 0);
+  PERFORM test.assert_eq('authenticated cannot run rate_limit_hit',
+    (SELECT has_function_privilege('authenticated', 'public.rate_limit_hit(text,int,int)', 'EXECUTE'))::int, 0);
+  PERFORM test.assert_eq('service_role can run rate_limit_hit',
+    (SELECT has_function_privilege('service_role', 'public.rate_limit_hit(text,int,int)', 'EXECUTE'))::int, 1);
+  PERFORM test.assert_eq('authenticated cannot read rate_limits',
+    (SELECT has_table_privilege('authenticated', 'public.rate_limits', 'SELECT'))::int, 0);
+  PERFORM test.assert_eq('rate limit allows up to the limit', (public.rate_limit_hit('t:x', 60, 2))::int, 1);
+  PERFORM test.assert_eq('rate limit second hit allowed', (public.rate_limit_hit('t:x', 60, 2))::int, 1);
+  PERFORM test.assert_eq('rate limit third hit blocked', (public.rate_limit_hit('t:x', 60, 2))::int, 0);
+  PERFORM test.assert_eq('rate limit keys are independent', (public.rate_limit_hit('t:y', 60, 2))::int, 1);
+END $$;
+
 SELECT 'RLS_ALL_OK' AS result;

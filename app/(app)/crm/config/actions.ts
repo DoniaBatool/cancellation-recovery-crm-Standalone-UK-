@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { mergeDoctors, practitionersToDoctors } from "@/lib/dentally/practitioners";
+import { readDoctors } from "@/lib/doctors";
+import { getDentallyClient } from "@/lib/engine/runtime";
 import type { FormState } from "@/lib/form-state";
 import { getStaffContext, NOT_ALLOWED, SIGN_IN_AGAIN } from "@/lib/staff-session";
 import { getAdminClient } from "@/lib/supabase/admin";
@@ -40,4 +43,32 @@ export async function saveClinicConfig(_prev: FormState, formData: FormData): Pr
 
   revalidatePath("/crm/config");
   return { message: "Settings saved." };
+}
+
+/** Pull the dentist list from Dentally and add the ones that are not in Settings yet. */
+export async function importDentallyDoctors(_prev: FormState): Promise<FormState> {
+  const ctx = await getStaffContext(["owner", "admin"]);
+  if (!ctx) return (await getStaffContext()) ? NOT_ALLOWED : SIGN_IN_AGAIN;
+
+  const client = getDentallyClient();
+  if (!client) return { error: "Dentally is not connected yet. Add the Dentally settings first." };
+
+  let fetched;
+  try {
+    fetched = practitionersToDoctors(await client.listPractitioners());
+  } catch {
+    return { error: "Could not read the dentist list from Dentally. Please check the connection and try again." };
+  }
+
+  const { data: config } = await ctx.supabase.from("clinic_config").select("doctors").eq("clinic_id", ctx.clinic.id).maybeSingle();
+  if (!config) return { error: "This clinic has no settings row yet. Please contact support." };
+
+  const { doctors, added } = mergeDoctors(readDoctors(config.doctors), fetched);
+  if (added === 0) return { message: "Nothing new to add. Your dentist list is up to date." };
+
+  const { error } = await ctx.supabase.from("clinic_config").update({ doctors: normaliseDoctors(doctors) }).eq("clinic_id", ctx.clinic.id);
+  if (error) return { error: "Could not save the dentists. Please try again." };
+
+  revalidatePath("/crm/config");
+  return { message: `Added ${added} dentist${added === 1 ? "" : "s"} from Dentally.` };
 }

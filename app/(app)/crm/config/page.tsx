@@ -8,6 +8,8 @@ import { CopyField } from "@/components/ui/copy-field";
 import { PageHeader } from "@/components/shell/page-header";
 import { getAppUrl } from "@/lib/env";
 import { readDoctors } from "@/lib/doctors";
+import { getDentallyClient } from "@/lib/engine/runtime";
+import { ImportDoctors } from "./import-doctors";
 import { requireSession } from "@/lib/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { canEditSettings } from "@/lib/team-permissions";
@@ -71,6 +73,7 @@ export default async function SettingsPage() {
   };
 
   const link = joinUrl(getAppUrl(), clinic.slug);
+  const dentallyConnected = getDentallyClient() !== null;
 
   return (
     <>
@@ -78,6 +81,18 @@ export default async function SettingsPage() {
 
       <div className="flex flex-col gap-6">
         <SettingsForm values={values} canEdit={canEditSettings(role)} />
+
+        {dentallyConnected && canEditSettings(role) ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Dentists from Dentally</CardTitle>
+              <CardDescription>Adds any dentist that is in Dentally but not in the list above. Existing names and emails are kept.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ImportDoctors />
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>

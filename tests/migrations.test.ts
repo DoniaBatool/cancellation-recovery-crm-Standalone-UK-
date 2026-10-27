@@ -8,6 +8,7 @@ const guide = readFileSync(path.join(root, "SYSTEM_BUILD_GUIDE.md"), "utf8");
 const schemaSql = readFileSync(path.join(root, "supabase/migrations/20270101000001_schema.sql"), "utf8");
 const rlsSql = readFileSync(path.join(root, "supabase/migrations/20270101000002_rls.sql"), "utf8");
 const v21Sql = readFileSync(path.join(root, "supabase/migrations/20270101000003_v21_schema_changes.sql"), "utf8");
+const rateLimitSql = readFileSync(path.join(root, "supabase/migrations/20270101000004_rate_limits.sql"), "utf8");
 const sha256 = (t: string) => createHash("sha256").update(t).digest("hex");
 
 /** The first ```sql block after a heading in the guide. */
@@ -130,5 +131,18 @@ describe("schema sanity", () => {
   it("uses fixed migration names in order", () => {
     expect("20270101000001_schema.sql" < "20270101000002_rls.sql").toBe(true);
     expect("20270101000002_rls.sql" < "20270101000003_v21_schema_changes.sql").toBe(true);
+    expect("20270101000003_v21_schema_changes.sql" < "20270101000004_rate_limits.sql").toBe(true);
+  });
+
+  it("0004 adds only the rate-limit table and function, locked to the service role (guide §15)", () => {
+    const sql = code(rateLimitSql);
+    expect(sql).toContain("CREATE TABLE public.rate_limits");
+    expect(sql).toContain("ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY");
+    expect(sql).not.toMatch(/CREATE POLICY/);
+    expect(sql).toContain("REVOKE ALL ON FUNCTION public.rate_limit_hit(TEXT, INT, INT) FROM PUBLIC, anon, authenticated");
+    expect(sql).toContain("GRANT EXECUTE ON FUNCTION public.rate_limit_hit(TEXT, INT, INT) TO service_role");
+    expect(sql).toContain("SECURITY DEFINER");
+    expect(sql).toContain("SET search_path = public");
+    expect((sql.match(/CREATE TABLE/g) ?? []).length).toBe(1);
   });
 });

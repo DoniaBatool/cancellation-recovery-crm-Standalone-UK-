@@ -1,10 +1,10 @@
-# How SlotRefill works
+# How Cancellation Recovery works
 
-_Plain-English description for clinics. Updated after each build phase (guide §20). Last updated after Phase 2 (CRM core)._
+_Plain-English description for clinics. Updated after each build phase (guide §20). Last updated after Phase 6 (code complete; live checks with real accounts still to do)._
 
 ## The idea
 
-When a patient cancels late, the chair sits empty. Reception rarely has time to phone people to fill it. SlotRefill does the chasing and asks reception for one tap to confirm.
+When a patient cancels late, the chair sits empty. Reception rarely has time to phone people to fill it. Cancellation Recovery does the chasing and asks reception for one tap to confirm.
 
 This is an **admin tool**. It never gives clinical advice and it does not make clinical decisions.
 
@@ -21,25 +21,25 @@ This is an **admin tool**. It never gives clinical advice and it does not make c
 
 Patients never log in. They only see the sign-up page and the offer page.
 
-## What exists today (after Phase 2)
+## What exists today
 
-Phases 1 and 2 build the foundation and the clinic's own tools. Offers, replies and approval are built in later phases (see `PROGRESS.md`).
+The whole loop is built. It has been run end to end against a test database with pretend email and SMS (nothing was sent to anyone). It has **not** yet been run with real Brevo, Twilio, Slack or Dentally accounts: that happens in a one-week shadow period at each clinic, where every message goes to us instead of to patients.
 
 | Part | Status |
 | --- | --- |
-| Sign in, forgot password, set password | Built and tried in a browser against the live project (sign in, sign out, no-clinic page) |
-| Clinic data kept separate: each clinic only ever sees its own records | Built and checked by automated tests on a local database |
-| Dashboard (empty, with the four headline tiles) | Built |
-| Pipeline board with its five columns (empty) | Built |
-| Waitlist: add, edit, pause, search, remove permanently | Built |
-| Patient page (details, offer history, messages) | Built |
-| Activity: a timeline of everything that happened to each slot | Built |
-| Settings: reception email, prices, dentists, how offers are sent | Built |
-| Sign-up link, QR code and a printable card for reception | Built |
-| Public sign-up page for patients (with consent box) | Built |
-| Team: invite, change role, remove, hand over ownership | Built |
-| Add a cancellation by hand and see it on the board | Built; the live check waits for the server key |
-| Offers, SMS, email, approval, Dentally | Not built yet (Phases 3 to 5) |
+| Sign in, forgot password, team invites and roles | Built; sign-in tried in a browser against the live project |
+| Each clinic only ever sees its own records | Built and checked by automated tests |
+| Waitlist, patient page, activity timeline, settings, sign-up link, QR card, public sign-up page | Built and tried in a browser |
+| Offers by email and SMS, one answer only, the next patient if NO or no answer | Built and tested with pretend messages |
+| Reception approval: one tap in Slack, an email link, or the board | Built and tested with pretend messages |
+| Confirmation emails to the patient, the dentist and reception | Built and tested with pretend messages |
+| Quiet hours (no texts overnight), approval reminder, expiry, self-healing if something gets stuck | Built and tested |
+| Replies by text: YES, NO, STOP (and START to come back) | Built and tested |
+| Reading cancellations from Dentally (read-only; never writes to Dentally) | Built from our best understanding of the Dentally API; to be confirmed in a Dentally test account |
+| Dashboard: revenue saved, slots recovered, recovery rate, average fill time, weekly trend | Built |
+| Alerts to us if something stops working (webhook silent, polling failing, SMS failing, offers stuck) | Built and tested |
+| Protection against abuse of the public pages | Built |
+| Setting up a new clinic from one settings file | Built and tested; not yet run on a real new clinic |
 
 ## The five stages on the board
 

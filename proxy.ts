@@ -6,10 +6,10 @@ import type { Database } from "@/lib/database.types";
 
 // Next 16 "proxy" (the old middleware). Source: SYSTEM_BUILD_GUIDE.md §9.
 //  - refreshes the Supabase session on every request (auth.getClaims())
-//  - redirects logged-out users from /crm* and /dashboard* to /login?next=...
+//  - redirects logged-out users from /crm*, /dashboard* and /approve* to /login?next=...
 //  - redirects logged-in users away from /login
 
-const PROTECTED_PREFIXES = ["/crm", "/dashboard"];
+const PROTECTED_PREFIXES = ["/crm", "/dashboard", "/approve"];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -64,8 +64,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Excludes api/, confirm/, join/ and static assets (guide §9).
+  // Excludes api/, confirm/, c/ (short offer links), join/ and static assets (guide §9).
   matcher: [
-    "/((?!api/|confirm/|join/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!api/|confirm/|c/|join/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

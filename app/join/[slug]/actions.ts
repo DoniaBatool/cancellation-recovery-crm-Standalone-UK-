@@ -1,6 +1,8 @@
 "use server";
 
 import type { FormState } from "@/lib/form-state";
+import { RATE_LIMITS } from "@/lib/rate-limit";
+import { isIpRateLimited } from "@/lib/rate-limit-request";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { JOIN_ADDED_BY, JOIN_SOURCE, planOptIn } from "@/lib/waitlist-optin";
 import { fieldErrors, formDataToObject, publicJoinSchema } from "@/lib/validation";
@@ -15,6 +17,10 @@ export async function joinClinicWaitlist(slug: string, _prev: FormState, formDat
   // Honeypot: real people never fill this. Pretend it worked so bots learn nothing.
   if (typeof raw.website === "string" && raw.website.trim() !== "") {
     return { message: "joined" };
+  }
+
+  if (await isIpRateLimited(RATE_LIMITS.join)) {
+    return { error: "Too many sign-ups from this connection. Please try again in a little while, or ask the practice to add you." };
   }
 
   const parsed = publicJoinSchema.safeParse(raw);

@@ -1,12 +1,10 @@
-# SlotRefill — standalone build
+# Cancellation Recovery — Standalone Build
 
 A CRM plus an engine for UK private dental clinics. When a patient cancels, the system finds a waitlist patient, offers the slot by SMS and email, the patient answers YES or NO once on any channel, reception approves, and the dashboard shows revenue saved.
 
-**Name:** SlotRefill (chosen 2026-10-26). `slotrefill.com` and `slotrefill.co.uk` were free on that date; check again and search the UK trademark register before buying or printing anything. The Supabase project keeps its technical name `cancellation-recovery-standalone`, and `SYSTEM_BUILD_GUIDE.md` keeps its working title.
-
 Everything lives in one Next.js app. There is no n8n. The full specification is in `SYSTEM_BUILD_GUIDE.md`.
 
-Status: **Phase 1 (foundation) and Phase 2 (CRM core) are done.** Next is Phase 3 (offer loop). See `PROGRESS.md`.
+Status: **Phases 1 and 2 are done and checked live. Phases 3 to 6 are fully coded and tested with fixtures and mocks, and the whole loop passes a real end-to-end simulation against the dev database. What is left is checking them with real accounts (Brevo, Twilio, Slack, Dentally sandbox, Vercel) and the shadow-mode pilot (Phase 7).** See `PROGRESS.md`.
 
 ## Docs index
 
@@ -19,36 +17,40 @@ Status: **Phase 1 (foundation) and Phase 2 (CRM core) are done.** Next is Phase 
 | `PROGRESS.md` | Phase table, Now / Next, blocked items, session log | Start and end of every session |
 | `HOW_IT_WORKS.md` | Plain-English flow for clinics | After each phase; when explaining the product |
 | `.env.example` | Names of environment variables, no values | Setting up `.env.local` or Vercel |
-| `supabase/migrations/*.sql` | Database schema and RLS (guide §5). `0001` and `0002` are applied live and frozen; `0003_v21_schema_changes` carries the guide v2.1 changes | Changing the database (always add a new numbered file) |
+| `supabase/migrations/*.sql` | Database schema and RLS (guide §5). `0001` and `0002` are applied live and frozen; `0003_v21_schema_changes` carries the guide v2.1 changes; `0004_rate_limits` adds the small rate-limit table (guide §15) | Changing the database (always add a new numbered file) |
+| `clinics/clinic.example.env` | Template for one clinic's setup file (copy to `clinics/<slug>.env`, which is gitignored) | Onboarding a new clinic |
+| `scripts/clinic-setup.mjs` | `pnpm clinic:setup clinics/<slug>.env [--dry-run]`: sets up one clinic end to end (guide §13); safe to re-run | Onboarding a new clinic |
+| `scripts/clinic-migrate-all.mjs` | `pnpm clinic:migrate-all [--dry-run]`: applies pending migrations to every `clinics/*.env` | After adding a migration |
+| `scripts/simulate-flow.mjs` + `scripts/simulate/` | `pnpm simulate [--fast]`: runs the whole recovery loop against the dev database with a recording notifier, then deletes its own test clinic | Before a release or pilot; after engine changes |
+| `scripts/lib/*.mjs` (+ `.d.mts`) | Pure helpers and steps used by the clinic scripts (env parsing, validation, cron SQL, runner, API clients). Unit tested | When changing the clinic scripts |
+| `scripts/rls-check.sh` | Runs the real migrations on a throwaway Postgres and the RLS checks | `pnpm test:rls` |
 | `tests/sql/supabase-stub.sql` | Test-only stand-in for Supabase roles and `auth.uid()` | Only used by `pnpm test:rls` |
 | `tests/sql/rls-assertions.sql` | The row-level-security checks run on a local Postgres | When adding tables or policies |
 | `app/fonts/GEIST-LICENSE.txt` | Licence (SIL OFL 1.1) for the self-hosted Geist font | When checking font licensing |
 
 ## Stack
 
-Next.js 16 (App Router), React 19, TypeScript strict, Tailwind CSS 4, Supabase (Postgres + Auth, London), Zod 4, Vitest, pnpm. Later phases add Brevo (nodemailer), Twilio, Dentally, recharts and qrcode. See guide §3.2.
+Next.js 16 (App Router), React 19, TypeScript strict, Tailwind CSS 4, Supabase (Postgres + Auth, London), Zod 4, Vitest, pnpm. Also nodemailer (Brevo SMTP), Twilio, recharts and qrcode. See guide §3.2.
 
-## What exists (Phases 1 and 2)
+## What exists
 
-- App shell: sidebar on desktop, drawer on mobile, header with clinic name, email and role, sign out.
-- Auth pages: `/login`, `/forgot-password`, `/auth/confirm`, `/set-password`, `/no-access`.
-- `proxy.ts`: session refresh, redirects for `/crm*` and `/dashboard*`, logged-in users leave `/login`.
-- `/dashboard` (empty state, four tiles, Week/Month/Quarter tabs) and `/crm` (empty five-column board).
-- Database: guide §5 schema and RLS as migrations `0001`, `0002`, plus `0003` for the v2.1 changes (30-minute offers, no booking_mode / pms_new_appointment_id, new `slack_message_ts`).
-- UI components in `components/ui` using the §11 colour tokens.
-- Geist Sans is self-hosted from `app/fonts/` (no request to Google Fonts).
+**Phase 1 (foundation):** app shell (sidebar, mobile drawer), auth pages (`/login`, `/forgot-password`, `/auth/confirm`, `/set-password`, `/no-access`), `proxy.ts` (session refresh and redirects), schema + RLS migrations, §11 design tokens, UI components, Geist Sans self-hosted.
 
-Phase 2 (CRM core):
+**Phase 2 (CRM core):** `/crm` pipeline board (real cards, Add cancellation, Close card), `/crm/waitlist`, `/crm/patient/[id]`, `/crm/activity`, `/crm/config` (prices, dentists, engine settings, sign-up link, QR + print card), `/crm/team`, public `/join/[slug]`.
 
-- `/crm` pipeline board with real cards (30-second refresh, time in stage, offer countdown), **Add cancellation** and **Close card**.
-- `/crm/waitlist`: table, search, active filter, add/edit dialog, Active switch, permanent remove (erasure), "Opted out of SMS" badge.
-- `/crm/patient/[id]`: details, offer history, recovered slots, messages.
-- `/crm/activity`: history timeline with an actor filter.
-- `/crm/config`: reception email, prices, dentists, engine settings (owner/admin edit, staff read-only), sign-up link, QR (PNG download) and `/crm/config/qr-card` print card.
-- `/crm/team`: members, invite, change role, remove, transfer ownership (rules from guide §6.8).
-- `/join/[slug]`: public waitlist sign-up (consent box, honeypot, duplicate handling).
-- Logic in `lib/`: `pipeline.ts` (`transitionStage`), `engine/intake.ts`, `pricing.ts`, `team-permissions.ts`, `time.ts`, `waitlist-optin.ts`, `waitlist-qr.ts`, `doctors.ts`.
-- Not in Phase 2 by design: offers, matching, approval (Phase 3), SMS (Phase 4), Dentally (Phase 5), the sign-up page rate limit (Phase 6), the link to the clinic privacy notice (no field in the guide yet).
+**Phase 3 (offer loop):** matching (`lib/waitlist-matching.ts`), `startOffers` / `offerNext` / `advance` / `giveUp`, `respondToOffer`, `approveBooking` / `offerToNext` / `markBooked` (`lib/engine/`), patient page `/confirm/[token]`, login-protected `/approve/[token]`, Brevo email notifier with shadow mode (`lib/email.ts`, `lib/email-templates.ts`, `lib/engine/live-notifier.ts`), Slack one-tap approval (`lib/slack.ts`, `POST /api/webhooks/slack/actions`), the once-a-minute tick (`GET /api/cron/offers-tick`: expire offers, quiet-hours resume, approval reminder and timeout, self-heal), and the real dashboard (`/dashboard`: tiles, trend, by procedure, recent recoveries).
+
+**Phase 4 (SMS):** Twilio send with status callbacks (`lib/sms.ts`), GSM-7 templates (`lib/sms-templates.ts`), inbound YES / NO / STOP / START parser and handler (`lib/sms-reply.ts`, `lib/engine/inbound-sms.ts`), `POST /api/webhooks/twilio/inbound` and `/status` (signature checked), short links `/c/[token]`.
+
+**Phase 5 (Dentally, read-only):** `GET`-only client (`lib/dentally/`), normaliser, webhook `POST /api/webhooks/dentally/[secret]`, poller `GET /api/cron/dentally-poll`, doctor import in Settings, health monitoring (`GET /api/health`, `GET /api/cron/health-check` with operator alert emails). **The Dentally API field names and event shapes are assumptions; confirm them in the Dentally sandbox** (they live only in `lib/dentally/client.ts` and `normalise.ts`).
+
+**Phase 6 (hardening, multi-clinic):** rate limits on `/join`, `/confirm` and inbound SMS (`lib/rate-limit.ts`, migration `0004`), `pnpm clinic:setup`, `pnpm clinic:migrate-all`, `pg_cron` job SQL, `pnpm simulate`.
+
+Not built on purpose: the optional external API (guide §8.4), WhatsApp, the batch strategy, writing to Dentally (the app never writes to the practice system).
+
+## Environment variables
+
+`.env.example` lists every name. Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `CRON_SECRET` (32+ characters). Email (`SMTP_*`), Twilio, Slack and Dentally groups are optional: a group that is not fully filled in is simply skipped.
 
 ## How to run
 
@@ -71,6 +73,29 @@ pnpm typecheck     # TypeScript
 pnpm test          # all tests (unit, migrations vs guide v2.1, proxy, real RLS on a local Postgres)
 pnpm test:rls      # only the RLS check
 pnpm build         # production build
+pnpm simulate      # whole loop against the dev database (needs .env.local); add --fast for the cron path
 ```
 
 The RLS check needs a local PostgreSQL server (`initdb` and `psql`). If none is installed it reports "skipped", not "passed".
+
+## Addresses to paste into other services
+
+After `pnpm clinic:setup` prints them (replace `APP_URL` with the clinic's address):
+
+| Service | Address |
+| --- | --- |
+| Patient sign-up page / QR | `APP_URL/join/<clinic-slug>` |
+| Dentally webhook | `APP_URL/api/webhooks/dentally/<DENTALLY_WEBHOOK_SECRET>` |
+| Twilio incoming messages | `APP_URL/api/webhooks/twilio/inbound` |
+| Twilio status callback | `APP_URL/api/webhooks/twilio/status` |
+| Slack interactivity | `APP_URL/api/webhooks/slack/actions` |
+
+Cron routes (`/api/cron/offers-tick`, `/dentally-poll`, `/health-check`) and `/api/health` need `Authorization: Bearer <CRON_SECRET>`. `pnpm clinic:setup` schedules them with Supabase `pg_cron` + `pg_net`; the secret and the app address are stored in Supabase Vault.
+
+## Onboarding a clinic
+
+1. `cp clinics/clinic.example.env clinics/<slug>.env` and fill it in (the file is gitignored).
+2. `pnpm clinic:setup clinics/<slug>.env --dry-run` to check the file and see the plan.
+3. `pnpm clinic:setup clinics/<slug>.env`. Every step is safe to repeat.
+4. Paste the printed addresses into Dentally, Twilio and Slack; redeploy the Vercel project so the new variables apply.
+5. Prices and dentists in Settings, print the QR card, one week in shadow mode, then engine on with shadow off.

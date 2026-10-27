@@ -44,3 +44,9 @@ export function formatGBP(pounds: number): string {
 export function formatPercent(ratio: number): string {
   return `${Math.round(ratio * 100)}%`;
 }
+
+/** Weekday and time only, e.g. "Tue 14:30" (used in short subject lines). */
+export function formatDayTime(value: DateInput, timeZone: string = DEFAULT_TIMEZONE): string {
+  const weekday = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short" }).format(toDate(value));
+  return `${weekday} ${formatTime(value, timeZone)}`;
+}
