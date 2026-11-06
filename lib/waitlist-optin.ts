@@ -10,6 +10,12 @@ export type OptInPlan = { action: "update"; id: string } | { action: "insert" };
 
 export const JOIN_ADDED_BY = "Patient (sign-up link)";
 export const JOIN_SOURCE = "sms_link";
+export const JOIN_SOURCE_QR = "qr";
+
+/** The sign-up page is opened from a printed QR code as /join/<slug>?src=qr. Anything else is a plain link. */
+export function joinSourceFrom(src: unknown): "sms_link" | "qr" {
+  return src === "qr" ? JOIN_SOURCE_QR : JOIN_SOURCE;
+}
 
 const normEmail = (value: string | null | undefined) => (value ? value.trim().toLowerCase() : null);
 

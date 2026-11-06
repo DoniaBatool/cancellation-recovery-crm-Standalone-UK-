@@ -9,6 +9,8 @@ const schemaSql = readFileSync(path.join(root, "supabase/migrations/202701010000
 const rlsSql = readFileSync(path.join(root, "supabase/migrations/20270101000002_rls.sql"), "utf8");
 const v21Sql = readFileSync(path.join(root, "supabase/migrations/20270101000003_v21_schema_changes.sql"), "utf8");
 const rateLimitSql = readFileSync(path.join(root, "supabase/migrations/20270101000004_rate_limits.sql"), "utf8");
+const sourceSql = readFileSync(path.join(root, "supabase/migrations/20270101000005_source_qr_privacy_notice.sql"), "utf8");
+const reportsSql = readFileSync(path.join(root, "supabase/migrations/20270101000006_monthly_reports.sql"), "utf8");
 const sha256 = (t: string) => createHash("sha256").update(t).digest("hex");
 
 /** The first ```sql block after a heading in the guide. */
@@ -144,5 +146,26 @@ describe("schema sanity", () => {
     expect(sql).toContain("SECURITY DEFINER");
     expect(sql).toContain("SET search_path = public");
     expect((sql.match(/CREATE TABLE/g) ?? []).length).toBe(1);
+  });
+
+  it("0005 adds the 'qr' source and the clinic privacy notice link, nothing else", () => {
+    const sql = code(sourceSql);
+    expect("20270101000004_rate_limits.sql" < "20270101000005_source_qr_privacy_notice.sql").toBe(true);
+    expect(sql).toContain("'receptionist','sms_link','qr','online','pms'");
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS privacy_notice_url TEXT");
+    expect(sql).toMatch(/\^https:\/\//);
+    expect(sql).not.toMatch(/CREATE TABLE|CREATE POLICY|DROP TABLE/);
+  });
+
+  it("0006 adds only the monthly_reports table with clinic-scoped RLS", () => {
+    const sql = code(reportsSql);
+    expect("20270101000005_source_qr_privacy_notice.sql" < "20270101000006_monthly_reports.sql").toBe(true);
+    expect((sql.match(/CREATE TABLE/g) ?? []).length).toBe(1);
+    expect(sql).toContain("CREATE TABLE public.monthly_reports");
+    expect(sql).toContain("UNIQUE (clinic_id, month)");
+    expect(sql).toContain("ALTER TABLE public.monthly_reports ENABLE ROW LEVEL SECURITY");
+    expect((sql.match(/CREATE POLICY/g) ?? []).length).toBe(3);
+    expect(sql).not.toMatch(/FOR DELETE|TO anon/);
+    expect(sql.match(/private\.user_clinic_ids\(\)/g)?.length).toBeGreaterThanOrEqual(4);
   });
 });

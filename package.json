@@ -14,11 +14,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rls": "bash scripts/rls-check.sh",
+    "clinic:create": "node scripts/clinic-admin.mjs create",
+    "clinic:add-manager": "node scripts/clinic-admin.mjs add-manager",
     "clinic:setup": "node scripts/clinic-setup.mjs",
     "clinic:migrate-all": "node scripts/clinic-migrate-all.mjs",
     "simulate": "node scripts/simulate-flow.mjs"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
     "lucide-react": "^1.59.0",

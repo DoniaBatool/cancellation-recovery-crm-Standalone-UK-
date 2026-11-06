@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 
 describe("proxy: logged out", () => {
-  it.each(["/dashboard", "/crm", "/crm/waitlist", "/crm/patient/123", "/approve/abc"])("sends %s to /login with ?next", async (p) => {
+  it.each(["/dashboard", "/crm", "/crm/waitlist", "/crm/patient/123", "/approve/abc", "/reports", "/reports/pdf"])("sends %s to /login with ?next", async (p) => {
     const res = await proxy(req(p));
     expect(res.status).toBe(307);
     expect(new URL(location(res)!).pathname).toBe("/login");

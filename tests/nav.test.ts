@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { NAV_ITEMS, isActive } from "@/components/shell/nav-items";
 
 describe("navigation (guide §9)", () => {
-  it("lists the six items in order", () => {
-    expect(NAV_ITEMS.map((i) => i.label)).toEqual(["Dashboard", "Pipeline", "Waitlist", "Activity", "Settings", "Team"]);
+  it("lists the items in order (the six from the guide plus Reports)", () => {
+    expect(NAV_ITEMS.map((i) => i.label)).toEqual(["Dashboard", "Pipeline", "Waitlist", "Activity", "Reports", "Settings", "Team"]);
   });
 
   it("highlights the matching page only", () => {

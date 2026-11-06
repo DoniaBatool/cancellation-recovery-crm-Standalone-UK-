@@ -247,6 +247,16 @@ describe("Phase 2 schemas", () => {
       }
     });
 
+    it("privacy_notice_url is optional and must be an https link", () => {
+      const ok = clinicConfigSchema.safeParse({ ...goodConfig, privacy_notice_url: " https://clinic.co.uk/privacy " });
+      expect(ok.success && ok.data.privacy_notice_url).toBe("https://clinic.co.uk/privacy");
+      const blank = clinicConfigSchema.safeParse({ ...goodConfig, privacy_notice_url: "  " });
+      expect(blank.success && blank.data.privacy_notice_url).toBeUndefined();
+      expect(clinicConfigSchema.safeParse({ ...goodConfig, privacy_notice_url: "http://clinic.co.uk/p" }).success).toBe(false);
+      expect(clinicConfigSchema.safeParse({ ...goodConfig, privacy_notice_url: "javascript:alert(1)" }).success).toBe(false);
+      expect(clinicConfigSchema.safeParse({ ...goodConfig, privacy_notice_url: "not a link" }).success).toBe(false);
+    });
+
     it("needs at least one channel and valid quiet hours", () => {
       expect(clinicConfigSchema.safeParse({ ...goodConfig, offer_channels: [] }).success).toBe(false);
       expect(clinicConfigSchema.safeParse({ ...goodConfig, quiet_hours_start: "8pm" }).success).toBe(false);
@@ -291,6 +301,15 @@ describe("Phase 2 schemas", () => {
       expect(manualCancellationSchema.safeParse({ ...good, slot_time: "9:30" }).success).toBe(false);
       expect(manualCancellationSchema.safeParse({ ...good, slot_duration_minutes: "0" }).success).toBe(false);
       expect(manualCancellationSchema.safeParse({ ...good, procedure_type: "magic" }).success).toBe(false);
+    });
+
+    it("accepts confirm_duplicate only as 'yes' (blank means not confirmed)", () => {
+      const good = { slot_date: "2027-02-01", slot_time: "09:30", slot_duration_minutes: "30" };
+      const yes = manualCancellationSchema.safeParse({ ...good, confirm_duplicate: "yes" });
+      expect(yes.success && yes.data.confirm_duplicate).toBe("yes");
+      const none = manualCancellationSchema.safeParse({ ...good, confirm_duplicate: "" });
+      expect(none.success && none.data.confirm_duplicate).toBeUndefined();
+      expect(manualCancellationSchema.safeParse({ ...good, confirm_duplicate: "maybe" }).success).toBe(false);
     });
   });
 

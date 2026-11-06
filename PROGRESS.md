@@ -42,11 +42,10 @@ Percent = finished phases out of the 7 in guide §19, and a phase counts as done
 **Business / compliance (guide §16):** DPA signed with each clinic, DPIA, privacy notice text, ICO registration check, retention policy; the first pilot clinic and a shadow-week plan.
 
 **Decisions for Donia (small, no rush):**
-- Privacy-notice link on `/join` (guide §9.9): where should it come from (a new clinic field, or one fixed page)? Left out for now.
-- After a patient texts STOP and later signs up again on `/join`, I keep the opt-out (no texts) and only reactivate the row. Texting START re-enables texts (my addition, with a confirmation text). Say if sign-up should also clear the opt-out.
 - Geist Sans is self-hosted instead of Google Fonts. Tell me if you prefer Google Fonts.
-- `/join` stores `opt_in_source = sms_link`; want a separate value for QR/web?
-- Adding the same manual cancellation twice creates two cards on purpose (two chairs can cancel together). Want a warning for an identical slot?
+- Each clinic must paste its own privacy notice link in Settings. Until then `/join` shows a short "ask the practice" line instead.
+
+- **Migration 0006 (monthly_reports) is not applied to the live dev database yet.** The Supabase tool returned a permission error. Run `supabase/migrations/20270101000006_monthly_reports.sql` in the Supabase SQL editor (or `supabase db push`), then open `/reports`.
 
 **Heads-ups:**
 - A waitlist patient's "notice needed" defaults to 48 h (guide §6.2), so a slot less than 48 h away is offered only to patients who chose a shorter notice.
@@ -54,7 +53,7 @@ Percent = finished phases out of the 7 in guide §19, and a phase counts as done
 - The offer link uses `NEXT_PUBLIC_APP_URL`. If `pnpm dev` runs on another port (e.g. 3004), set it to that port in `.env.local`.
 - Health alert for SMS failures needs at least 5 texts in the hour before it can fire (my choice, to avoid false alarms).
 - Guide §14 says the `--fast` simulation shrinks the offer expiry to 1 minute, but the database only allows 5 minutes or more. `--fast` instead ages the offer past its expiry and runs the same tick the cron runs.
-- New in this phase and not in the original guide text: migration `0004_rate_limits` (the "small table" that §15 allows), START keyword, `lib/waitlist-sync.ts` (pure helper only; the optional `/api/v1/waitlist` route is not built).
+- New in this phase and not in the original guide text: migrations `0004_rate_limits` (the "small table" that §15 allows), START keyword, `lib/waitlist-sync.ts` (pure helper only; the optional `/api/v1/waitlist` route is not built).
 
 ## Assumptions to confirm (Dentally) — all isolated in `lib/dentally/client.ts` and `normalise.ts`
 
@@ -65,7 +64,7 @@ Also not tested live: the Supabase Management API calls in `scripts/lib/api-clie
 ## Supabase project (no secrets here)
 
 - Name `cancellation-recovery-standalone`, ref `lxdwrmmcmfenxlyemeqp`, region eu-west-2 (London).
-- Migrations applied: `schema`, `rls`, `v21_schema_changes` and `rate_limits` (0004, 2026-10-27). Extensions `pg_cron` and `pg_net` were enabled while testing the cron SQL; no jobs are scheduled.
+- Migrations applied: `schema`, `rls`, `v21_schema_changes` and `rate_limits` (0004, 2026-10-27) and `source_qr_privacy_notice` (0005, 2026-10-27). Extensions `pg_cron` and `pg_net` were enabled while testing the cron SQL; no jobs are scheduled.
 - Leftover from that test: two throw-away Vault secrets named `cron_secret` and `app_url` (dummy values, harmless; the database tool refused to delete them). `pnpm clinic:setup` overwrites them with the real values.
 - Data: one clinic, **Smile Dentals** (`smile-dentals`), Donia as owner. Waitlist, cancellations and pipelines are empty. The simulation deletes its own test clinic each time (checked).
 - `.env.local` (cloud copy) holds the Supabase URL and keys and `CRON_SECRET`. The Mac copy keeps Donia's own.
@@ -74,6 +73,8 @@ Also not tested live: the Supabase Management API calls in `scripts/lib/api-clie
 
 | Date | Built | Tests | Left |
 | --- | --- | --- | --- |
+| 2026-11-01 (port: reports + clinic admin) | Monthly Reports: migration `0006_monthly_reports` (table + RLS), `lib/reports.ts` (clinic-timezone months, cohort basis, saved/frozen snapshots), `lib/report-pdf.tsx` (server PDF via `@react-pdf/renderer`), `/reports` page + save action + `/reports/pdf`, nav item, proxy protection. Clinic setup: kept our existing (more complete) `clinic:setup`; added `clinic:create`, `clinic:add-manager` and `NEW_CLINIC_SETUP.md`; dropped the n8n/partner key parts. New dependency: `@react-pdf/renderer` | typecheck clean; 586 tests pass; local RLS_ALL_OK (incl. 0006); build OK | **Apply migration 0006 to the live dev DB** (the Supabase tool lost permission); open `/reports` and download a PDF |
+| 2026-10-27 (small features) | Patient source: QR code now points to `/join/<slug>?src=qr` and stores `opt_in_source = qr` (label "QR code" in the waitlist). Duplicate warning: adding a manual cancellation for a slot (same time and dentist) already on the board asks "Add anyway" (never blocks). Clinic `privacy_notice_url` (Settings field, https only) shown on `/join` next to consent. Patient who earlier texted STOP and signs up again is asked "text offers again?" (`answerSmsPreference`, rate limited; Yes clears our opt-out, No keeps email only). Migration 0005 applied live | typecheck clean; 557 tests pass; local RLS_ALL_OK; build OK | Live checks with real accounts |
 | 2026-10-27 (Phase 6) | Rate limits: migration `0004_rate_limits` (table + `rate_limit_hit()`, service role only) applied live; `lib/rate-limit.ts` on `/join` (20/h), `/confirm` page (120/10 min) and answer (30/10 min), inbound SMS per phone (30/h, silent). Scripts: `clinic-setup.mjs` (9 steps, `--dry-run`, idempotent), `clinic-migrate-all.mjs`, `clinics/clinic.example.env`, pg_cron SQL using Vault (tested on the live DB, then removed), `simulate-flow` (normal + `--fast`). Security checklist §15 reviewed: `pnpm audit` clean, logs carry no patient payloads. Docs: README, CLAUDE.md, HOW_IT_WORKS, this file | typecheck clean; 543 tests pass; local RLS_ALL_OK (incl. 0004); build OK; simulate 7/7 and --fast 7/7 on the live dev DB; local production server smoke test OK | Live checks with real accounts; tick Phases 3–6 afterwards |
 | 2026-10-27 (Phases 3c, 4, 5) | 3c: email notifier + templates, Slack approval, `/approve/[token]`, tick cron, real dashboard. 4: Twilio send/status/inbound, SMS templates, STOP/START, `/c/[token]`. 5: Dentally client/normaliser/webhook/poller, doctor import, health monitoring + operator alerts, `waitlist-sync` helper | 418 → 542 tests, all pass | Live checks with real accounts |
 | 2026-10-26 (Phase 3b) | Engine: `startOffers`/`offerNext`/`advance`/`giveUp` (`lib/engine/offer.ts`), `respondToOffer`, `approveBooking`/`offerToNext`/`markBooked`/`notifyReception` (`approve.ts`), quiet hours, offer view, notifier interface (`notifier.ts`, `holdNotifier` until 3c). Pages: `/confirm/[token]` (mobile first, noindex, 44 px+ buttons), board buttons (Start offers, Copy offer link, Approve, Offer to next patient, Book in Dentally checklist + Booked ✓). Manual cancellation now starts offers when the engine is on | typecheck clean; 291 tests pass (53 new, incl. an in-memory DB for whole-flow tests); build OK; live browser 22/22 on a temporary clinic | 3c. QA clinic cleanup pending (see Now) |

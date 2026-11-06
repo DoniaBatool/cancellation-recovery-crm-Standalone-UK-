@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planOptIn } from "@/lib/waitlist-optin";
+import { joinSourceFrom, planOptIn } from "@/lib/waitlist-optin";
 
 const rows = [
   { id: "1", email: "ann@example.com", phone: "+447700900001" },
@@ -23,5 +23,19 @@ describe("planOptIn", () => {
   it("inserts when nothing matches or there is nothing to match", () => {
     expect(planOptIn(rows, { phone: "+447700900009", email: "new@example.com" })).toEqual({ action: "insert" });
     expect(planOptIn([], { phone: null, email: null })).toEqual({ action: "insert" });
+  });
+});
+
+describe("joinSourceFrom", () => {
+  it("says qr only for src=qr", () => {
+    expect(joinSourceFrom("qr")).toBe("qr");
+  });
+
+  it("falls back to the plain sign-up link for anything else", () => {
+    expect(joinSourceFrom(undefined)).toBe("sms_link");
+    expect(joinSourceFrom("")).toBe("sms_link");
+    expect(joinSourceFrom("QR")).toBe("sms_link");
+    expect(joinSourceFrom("pms")).toBe("sms_link");
+    expect(joinSourceFrom(["qr"])).toBe("sms_link");
   });
 });

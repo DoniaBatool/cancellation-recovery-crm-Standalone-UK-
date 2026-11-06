@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinUrl, qrPng, qrSvg, shortUrl } from "@/lib/waitlist-qr";
+import { joinUrl, qrJoinUrl, qrPng, qrSvg, shortUrl } from "@/lib/waitlist-qr";
 
 describe("join url", () => {
   it("builds the sign-up link and drops trailing slashes", () => {
@@ -20,5 +20,11 @@ describe("QR output", () => {
 
   it("returns SVG markup", async () => {
     expect(await qrSvg("https://app.example.com/join/x")).toContain("<svg");
+  });
+});
+
+describe("qrJoinUrl", () => {
+  it("tags the join link so scans can be told from link clicks", () => {
+    expect(qrJoinUrl("https://app.example.com/", "smile-dental")).toBe("https://app.example.com/join/smile-dental?src=qr");
   });
 });

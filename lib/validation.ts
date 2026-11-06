@@ -248,8 +248,25 @@ const doctorsJson = z.preprocess((v) => {
   }
 }, z.array(doctorSchema).max(30, "Add at most 30 dentists."));
 
+const optionalHttpsUrl = z.preprocess(
+  blank,
+  z
+    .string()
+    .trim()
+    .max(300, "Use at most 300 characters.")
+    .refine((v) => {
+      try {
+        return new URL(v).protocol === "https:";
+      } catch {
+        return false;
+      }
+    }, "Enter a full link starting with https://")
+    .optional(),
+);
+
 export const clinicConfigSchema = z.object({
   contact_email: optionalEmail,
+  privacy_notice_url: optionalHttpsUrl,
   price_cleaning: price,
   price_consultation: price,
   price_filling: price,
@@ -310,6 +327,7 @@ export const manualCancellationSchema = z.object({
   doctor_id: optionalText(60),
   cancelled_patient_name: optionalText(120),
   cancellation_reason: optionalText(300),
+  confirm_duplicate: z.preprocess(blank, z.literal("yes").optional()),
 });
 
 export type ManualCancellationForm = z.output<typeof manualCancellationSchema>;

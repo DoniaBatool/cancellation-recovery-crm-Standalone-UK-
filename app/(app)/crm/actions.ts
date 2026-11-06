@@ -55,6 +55,18 @@ export async function addManualCancellation(_prev: FormState, formData: FormData
   const admin = adminOrNull();
   if (!admin) return SERVER_KEY_MISSING;
 
+  // Warn (never block) when the same slot is already on the board. Two chairs can cancel at once.
+  if (!v.confirm_duplicate) {
+    let existing = admin
+      .from("cancellation_events")
+      .select("id", { count: "exact", head: true })
+      .eq("clinic_id", ctx.clinic.id)
+      .eq("slot_datetime", slot.toISOString());
+    existing = doctorId ? existing.eq("doctor_id", doctorId) : existing.is("doctor_id", null);
+    const { count } = await existing;
+    if (count && count > 0) return { confirmDuplicate: true };
+  }
+
   try {
     const result = await ingestCancellation(admin, {
       clinicId: ctx.clinic.id,

@@ -1,6 +1,6 @@
-import { Activity, Columns3, LayoutDashboard, Settings, UserCog, Users, type LucideIcon } from "lucide-react";
+import { Activity, Columns3, FileText, LayoutDashboard, Settings, UserCog, Users, type LucideIcon } from "lucide-react";
 
-// Guide §9: Dashboard, Pipeline, Waitlist, Activity, Settings, Team.
+// Guide §9: Dashboard, Pipeline, Waitlist, Activity, Settings, Team. "Reports" was added later (monthly reports + PDF).
 export type NavItem = { href: string; label: string; icon: LucideIcon };
 
 export const NAV_ITEMS: readonly NavItem[] = [
@@ -8,6 +8,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/crm", label: "Pipeline", icon: Columns3 },
   { href: "/crm/waitlist", label: "Waitlist", icon: Users },
   { href: "/crm/activity", label: "Activity", icon: Activity },
+  { href: "/reports", label: "Reports", icon: FileText },
   { href: "/crm/config", label: "Settings", icon: Settings },
   { href: "/crm/team", label: "Team", icon: UserCog },
 ];

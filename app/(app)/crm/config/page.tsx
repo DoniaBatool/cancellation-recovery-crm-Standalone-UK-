@@ -32,7 +32,7 @@ export default async function SettingsPage() {
 
   const [{ data: config }, { data: clinicRow }] = await Promise.all([
     supabase.from("clinic_config").select("*").eq("clinic_id", clinic.id).maybeSingle(),
-    supabase.from("clinics").select("contact_email").eq("id", clinic.id).maybeSingle(),
+    supabase.from("clinics").select("contact_email, privacy_notice_url").eq("id", clinic.id).maybeSingle(),
   ]);
 
   if (!config) {
@@ -46,6 +46,7 @@ export default async function SettingsPage() {
 
   const values: ConfigValues = {
     contact_email: clinicRow?.contact_email ?? "",
+    privacy_notice_url: clinicRow?.privacy_notice_url ?? "",
     prices: {
       cleaning: config.price_cleaning,
       consultation: config.price_consultation,

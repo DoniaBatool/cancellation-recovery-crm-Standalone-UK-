@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getAppUrl } from "@/lib/env";
 import { requireSession } from "@/lib/session";
-import { joinUrl, qrSvg, shortUrl } from "@/lib/waitlist-qr";
+import { joinUrl, qrJoinUrl, qrSvg, shortUrl } from "@/lib/waitlist-qr";
 import { PrintButton } from "./print-button";
 
 export const metadata: Metadata = { title: "Print QR card", robots: { index: false } };
@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Print QR card", robots: { index: fal
 export default async function QrCardPage() {
   const { clinic } = await requireSession();
   const url = joinUrl(getAppUrl(), clinic.slug);
-  const svg = await qrSvg(url);
+  const svg = await qrSvg(qrJoinUrl(getAppUrl(), clinic.slug));
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center gap-6 px-6 py-8 text-center">

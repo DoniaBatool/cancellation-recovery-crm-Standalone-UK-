@@ -11,6 +11,11 @@ export function joinUrl(appUrl: string, slug: string): string {
   return `${appUrl.replace(/\/+$/, "")}/join/${encodeURIComponent(slug)}`;
 }
 
+/** What the printed QR code points to: the same page, tagged so we can tell scans from link clicks. */
+export function qrJoinUrl(appUrl: string, slug: string): string {
+  return `${joinUrl(appUrl, slug)}?src=qr`;
+}
+
 /** The URL without the scheme, for the short line under the printed QR code. */
 export function shortUrl(url: string): string {
   return url.replace(/^https?:\/\//, "");

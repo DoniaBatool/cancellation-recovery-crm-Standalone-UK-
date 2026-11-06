@@ -1,19 +1,59 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { Form } from "@/components/ui/form";
 import { ChoiceChips } from "@/components/ui/choice-chips";
 import { Field, Input, NativeSelect } from "@/components/ui/form-controls";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { NOTICE_OPTIONS, PROCEDURES, TIMES_OF_DAY, WEEKDAYS } from "@/lib/constants";
-import { joinClinicWaitlist } from "./actions";
+import { answerSmsPreference, joinClinicWaitlist } from "./actions";
 
 const cap = (v: string) => v.charAt(0).toUpperCase() + v.slice(1);
 
-export function JoinForm({ slug, clinicName, doctors }: { slug: string; clinicName: string; doctors: string[] }) {
-  const [state, formAction] = useActionState(joinClinicWaitlist.bind(null, slug), null);
+function SmsQuestion({ slug, patientId }: { slug: string; patientId: string }) {
+  const [pending, start] = useTransition();
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  if (result) {
+    return (
+      <Alert tone={result.ok ? "success" : "error"}>{result.message}</Alert>
+    );
+  }
+
+  const answer = (value: "yes" | "no") => start(async () => setResult(await answerSmsPreference(slug, patientId, value)));
+
+  return (
+    <div className="flex flex-col gap-3 border-t pt-4 text-left">
+      <p className="font-medium">You asked us to stop texts earlier. Do you want text offers again?</p>
+      <div className="flex gap-2">
+        <Button type="button" className="h-11 flex-1" disabled={pending} onClick={() => answer("yes")}>
+          Yes, text me
+        </Button>
+        <Button type="button" variant="outline" className="h-11 flex-1" disabled={pending} onClick={() => answer("no")}>
+          No, email only
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function JoinForm({
+  slug,
+  src,
+  clinicName,
+  doctors,
+  privacyUrl,
+}: {
+  slug: string;
+  src?: string;
+  clinicName: string;
+  doctors: string[];
+  privacyUrl: string | null;
+}) {
+  const [state, formAction] = useActionState(joinClinicWaitlist.bind(null, slug, src), null);
 
   if (state?.message) {
     return (
@@ -21,6 +61,7 @@ export function JoinForm({ slug, clinicName, doctors }: { slug: string; clinicNa
         <CheckCircle2 className="h-10 w-10 text-green-700" aria-hidden="true" />
         <h2 className="text-xl font-semibold">You&apos;re on the list.</h2>
         <p className="text-muted-foreground">We&apos;ll be in touch when a slot opens.</p>
+        {state.askSmsPreference ? <SmsQuestion slug={slug} patientId={state.askSmsPreference.patientId} /> : null}
       </div>
     );
   }
@@ -81,6 +122,17 @@ export function JoinForm({ slug, clinicName, doctors }: { slug: string; clinicNa
           </span>
         </label>
         {errors?.consent ? <p className="text-sm text-destructive">{errors.consent}</p> : null}
+        {privacyUrl ? (
+          <p className="text-sm text-muted-foreground">
+            How we use your details:{" "}
+            <a href={privacyUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+              read {clinicName}&apos;s privacy notice
+            </a>
+            .
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Ask the practice if you want to know how your details are used.</p>
+        )}
       </div>
 
       <SubmitButton size="lg" pendingText="Joining…">

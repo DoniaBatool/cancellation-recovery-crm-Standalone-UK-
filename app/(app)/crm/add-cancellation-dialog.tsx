@@ -48,6 +48,11 @@ function AddForm({ doctors, today, onDone }: { doctors: Doctor[]; today: string;
   return (
     <Form action={formAction} noValidate className="flex flex-col gap-4">
       {state?.error ? <Alert tone="error">{state.error}</Alert> : null}
+      {state?.confirmDuplicate ? (
+        <Alert tone="info">
+          This slot is already on the board. If two chairs cancelled at the same time, add it anyway. Otherwise press Cancel.
+        </Alert>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-3">
         <Field id="slot_date" label="Date" error={errors?.slot_date}>
           {(aria) => <Input {...aria} name="slot_date" type="date" defaultValue={today} required />}
@@ -95,7 +100,8 @@ function AddForm({ doctors, today, onDone }: { doctors: Doctor[]; today: string;
         <Button type="button" variant="outline" onClick={onDone}>
           Cancel
         </Button>
-        <SubmitButton pendingText="Adding…">Add cancellation</SubmitButton>
+        {state?.confirmDuplicate ? <input type="hidden" name="confirm_duplicate" value="yes" /> : null}
+        <SubmitButton pendingText="Adding…">{state?.confirmDuplicate ? "Add anyway" : "Add cancellation"}</SubmitButton>
       </div>
     </Form>
   );

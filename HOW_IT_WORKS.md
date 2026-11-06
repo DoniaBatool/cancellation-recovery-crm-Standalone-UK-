@@ -35,7 +35,9 @@ The whole loop is built. It has been run end to end against a test database with
 | Confirmation emails to the patient, the dentist and reception | Built and tested with pretend messages |
 | Quiet hours (no texts overnight), approval reminder, expiry, self-healing if something gets stuck | Built and tested |
 | Replies by text: YES, NO, STOP (and START to come back) | Built and tested |
+| Sign-up page: privacy notice link, QR vs link source, and "text offers again?" question for patients who earlier said STOP | Built and tested |
 | Reading cancellations from Dentally (read-only; never writes to Dentally) | Built from our best understanding of the Dentally API; to be confirmed in a Dentally test account |
+| Monthly reports page with a PDF download: gaps found, offers sent, slots filled, fill rate, revenue recovered, by treatment; finished months are saved and never change | Built and tested |
 | Dashboard: revenue saved, slots recovered, recovery rate, average fill time, weekly trend | Built |
 | Alerts to us if something stops working (webhook silent, polling failing, SMS failing, offers stuck) | Built and tested |
 | Protection against abuse of the public pages | Built |

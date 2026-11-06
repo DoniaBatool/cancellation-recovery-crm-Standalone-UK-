@@ -20,7 +20,7 @@ export async function saveClinicConfig(_prev: FormState, formData: FormData): Pr
 
   const parsed = clinicConfigSchema.safeParse(formDataToObject(formData));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
-  const { contact_email, doctors, ...config } = parsed.data;
+  const { contact_email, privacy_notice_url, doctors, ...config } = parsed.data;
 
   const { data, error } = await ctx.supabase
     .from("clinic_config")
@@ -34,11 +34,11 @@ export async function saveClinicConfig(_prev: FormState, formData: FormData): Pr
     const admin = getAdminClient();
     const { error: emailError } = await admin
       .from("clinics")
-      .update({ contact_email: contact_email ?? null })
+      .update({ contact_email: contact_email ?? null, privacy_notice_url: privacy_notice_url ?? null })
       .eq("id", ctx.clinic.id);
-    if (emailError) return { error: "Settings saved, but the reception email could not be updated." };
+    if (emailError) return { error: "Settings saved, but the reception email or privacy link could not be updated." };
   } catch {
-    return { error: "Settings saved, but the reception email could not be updated (server key missing)." };
+    return { error: "Settings saved, but the reception email or privacy link could not be updated (server key missing)." };
   }
 
   revalidatePath("/crm/config");

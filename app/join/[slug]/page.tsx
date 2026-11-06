@@ -10,14 +10,21 @@ import { JoinForm } from "./join-form";
 export const metadata: Metadata = { title: "Join our short-notice list", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
-export default async function JoinPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function JoinPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ src?: string | string[] }>;
+}) {
   const { slug } = await params;
+  const { src } = await searchParams;
   if (!/^[a-z0-9-]{1,80}$/.test(slug)) notFound();
 
   const admin = getAdminClient();
   const { data: clinic } = await admin
     .from("clinics")
-    .select("id, name")
+    .select("id, name, privacy_notice_url")
     .eq("slug", slug)
     .eq("is_active", true)
     .maybeSingle();
@@ -36,7 +43,7 @@ export default async function JoinPage({ params }: { params: Promise<{ slug: str
         <h1 className="text-2xl font-semibold tracking-tight">Join our short-notice list</h1>
         <p className="text-muted-foreground">We&apos;ll text you if an earlier appointment opens.</p>
       </header>
-      <JoinForm slug={slug} clinicName={clinic.name} doctors={doctors} />
+      <JoinForm slug={slug} src={typeof src === "string" ? src : undefined} clinicName={clinic.name} doctors={doctors} privacyUrl={clinic.privacy_notice_url} />
     </main>
   );
 }

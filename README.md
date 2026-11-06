@@ -17,9 +17,11 @@ Status: **Phases 1 and 2 are done and checked live. Phases 3 to 6 are fully code
 | `PROGRESS.md` | Phase table, Now / Next, blocked items, session log | Start and end of every session |
 | `HOW_IT_WORKS.md` | Plain-English flow for clinics | After each phase; when explaining the product |
 | `.env.example` | Names of environment variables, no values | Setting up `.env.local` or Vercel |
-| `supabase/migrations/*.sql` | Database schema and RLS (guide §5). `0001` and `0002` are applied live and frozen; `0003_v21_schema_changes` carries the guide v2.1 changes; `0004_rate_limits` adds the small rate-limit table (guide §15) | Changing the database (always add a new numbered file) |
+| `supabase/migrations/*.sql` | Database schema and RLS (guide §5). `0001` and `0002` are applied live and frozen; `0003_v21_schema_changes` carries the guide v2.1 changes; `0004_rate_limits` adds the small rate-limit table (guide §15); `0005_source_qr_privacy_notice` adds the `qr` source and the clinic privacy-notice link; `0006_monthly_reports` adds the saved monthly report snapshots (apply to the dev DB and every clinic) | Changing the database (always add a new numbered file) |
 | `clinics/clinic.example.env` | Template for one clinic's setup file (copy to `clinics/<slug>.env`, which is gitignored) | Onboarding a new clinic |
 | `scripts/clinic-setup.mjs` | `pnpm clinic:setup clinics/<slug>.env [--dry-run]`: sets up one clinic end to end (guide §13); safe to re-run | Onboarding a new clinic |
+| `NEW_CLINIC_SETUP.md` | Step-by-step guide to set up a new clinic (accounts, Brevo, Vercel, Supabase, the one command, going live, checklist) | Onboarding a new clinic |
+| `scripts/clinic-admin.mjs` | `pnpm clinic:create` and `pnpm clinic:add-manager`: add a clinic row or a login by hand (logic in `scripts/lib/clinic-admin.mjs`) | Adding a clinic or a login outside `clinic:setup` |
 | `scripts/clinic-migrate-all.mjs` | `pnpm clinic:migrate-all [--dry-run]`: applies pending migrations to every `clinics/*.env` | After adding a migration |
 | `scripts/simulate-flow.mjs` + `scripts/simulate/` | `pnpm simulate [--fast]`: runs the whole recovery loop against the dev database with a recording notifier, then deletes its own test clinic | Before a release or pilot; after engine changes |
 | `scripts/lib/*.mjs` (+ `.d.mts`) | Pure helpers and steps used by the clinic scripts (env parsing, validation, cron SQL, runner, API clients). Unit tested | When changing the clinic scripts |
@@ -43,6 +45,10 @@ Next.js 16 (App Router), React 19, TypeScript strict, Tailwind CSS 4, Supabase (
 **Phase 4 (SMS):** Twilio send with status callbacks (`lib/sms.ts`), GSM-7 templates (`lib/sms-templates.ts`), inbound YES / NO / STOP / START parser and handler (`lib/sms-reply.ts`, `lib/engine/inbound-sms.ts`), `POST /api/webhooks/twilio/inbound` and `/status` (signature checked), short links `/c/[token]`.
 
 **Phase 5 (Dentally, read-only):** `GET`-only client (`lib/dentally/`), normaliser, webhook `POST /api/webhooks/dentally/[secret]`, poller `GET /api/cron/dentally-poll`, doctor import in Settings, health monitoring (`GET /api/health`, `GET /api/cron/health-check` with operator alert emails). **The Dentally API field names and event shapes are assumptions; confirm them in the Dentally sandbox** (they live only in `lib/dentally/client.ts` and `normalise.ts`).
+
+**Monthly reports:** the Reports page (`/reports`, month picker for the last 12 months) shows gaps found, offers sent, slots filled, fill rate, revenue recovered, average fill time and a by-treatment table. Months follow the clinic's timezone. A finished month is saved once in `monthly_reports` and then frozen; the running month is live; "Save this report" stores a snapshot on demand. "Download PDF" (`/reports/pdf?month=YYYY-MM`) makes a real A4 PDF on the server with `@react-pdf/renderer`. Code: `lib/reports.ts`, `lib/report-pdf.tsx`, `app/(app)/reports/`.
+
+**Sign-up extras:** QR scans are recorded as source `qr` (`?src=qr`); Settings has a privacy-notice link shown on `/join`; a patient who earlier replied STOP is asked if they want texts again; adding the same manual cancellation twice shows an "Add anyway" warning.
 
 **Phase 6 (hardening, multi-clinic):** rate limits on `/join`, `/confirm` and inbound SMS (`lib/rate-limit.ts`, migration `0004`), `pnpm clinic:setup`, `pnpm clinic:migrate-all`, `pg_cron` job SQL, `pnpm simulate`.
 
@@ -94,8 +100,12 @@ Cron routes (`/api/cron/offers-tick`, `/dentally-poll`, `/health-check`) and `/a
 
 ## Onboarding a clinic
 
+Full walkthrough: `NEW_CLINIC_SETUP.md`. In short:
+
 1. `cp clinics/clinic.example.env clinics/<slug>.env` and fill it in (the file is gitignored).
 2. `pnpm clinic:setup clinics/<slug>.env --dry-run` to check the file and see the plan.
 3. `pnpm clinic:setup clinics/<slug>.env`. Every step is safe to repeat.
 4. Paste the printed addresses into Dentally, Twilio and Slack; redeploy the Vercel project so the new variables apply.
 5. Prices and dentists in Settings, print the QR card, one week in shadow mode, then engine on with shadow off.
+
+To add a clinic row or another login by hand: `pnpm clinic:create --name "..." --email ...` and `pnpm clinic:add-manager --clinic <slug> --email <email> [--role ...] [--with-password]` (with `.env.local` pointing at that clinic's Supabase).

@@ -207,6 +207,7 @@ export type Database = {
         Row: {
           address: string | null
           contact_email: string | null
+          privacy_notice_url: string | null
           contact_name: string | null
           contact_phone: string | null
           country: string
@@ -224,6 +225,7 @@ export type Database = {
         Insert: {
           address?: string | null
           contact_email?: string | null
+          privacy_notice_url?: string | null
           contact_name?: string | null
           contact_phone?: string | null
           country?: string
@@ -241,6 +243,7 @@ export type Database = {
         Update: {
           address?: string | null
           contact_email?: string | null
+          privacy_notice_url?: string | null
           contact_name?: string | null
           contact_phone?: string | null
           country?: string
@@ -359,6 +362,44 @@ export type Database = {
             columns: ["waitlist_patient_id"]
             isOneToOne: false
             referencedRelation: "waitlist"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      monthly_reports: {
+        Row: {
+          clinic_id: string
+          created_at: string
+          data: Json
+          generated_at: string
+          id: string
+          month: string
+          updated_at: string
+        }
+        Insert: {
+          clinic_id: string
+          created_at?: string
+          data: Json
+          generated_at?: string
+          id?: string
+          month: string
+          updated_at?: string
+        }
+        Update: {
+          clinic_id?: string
+          created_at?: string
+          data?: Json
+          generated_at?: string
+          id?: string
+          month?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_reports_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
             referencedColumns: ["id"]
           },
         ]

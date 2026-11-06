@@ -10,6 +10,8 @@ export type RateLimitRule = { name: string; limit: number; windowSeconds: number
 export const RATE_LIMITS = {
   /** Public waitlist sign-up. Generous: a waiting room may share one wifi address. */
   join: { name: "join", limit: 20, windowSeconds: 3600 },
+  /** Answering the "text offers again?" question after sign-up. */
+  smsPreference: { name: "sms-preference", limit: 10, windowSeconds: 3600 },
   /** Opening the patient offer page. */
   confirmView: { name: "confirm-view", limit: 120, windowSeconds: 600 },
   /** Answering an offer from the page. */

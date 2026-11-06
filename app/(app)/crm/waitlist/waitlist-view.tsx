@@ -22,6 +22,7 @@ type ActiveFilter = "all" | "active" | "inactive";
 const SOURCE_LABELS: Record<string, string> = {
   receptionist: "Reception",
   sms_link: "Sign-up link",
+  qr: "QR code",
   online: "Online",
   pms: "Dentally",
 };

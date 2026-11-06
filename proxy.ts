@@ -6,10 +6,10 @@ import type { Database } from "@/lib/database.types";
 
 // Next 16 "proxy" (the old middleware). Source: SYSTEM_BUILD_GUIDE.md §9.
 //  - refreshes the Supabase session on every request (auth.getClaims())
-//  - redirects logged-out users from /crm*, /dashboard* and /approve* to /login?next=...
+//  - redirects logged-out users from /crm*, /dashboard*, /approve* and /reports* to /login?next=...
 //  - redirects logged-in users away from /login
 
-const PROTECTED_PREFIXES = ["/crm", "/dashboard", "/approve"];
+const PROTECTED_PREFIXES = ["/crm", "/dashboard", "/approve", "/reports"];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));

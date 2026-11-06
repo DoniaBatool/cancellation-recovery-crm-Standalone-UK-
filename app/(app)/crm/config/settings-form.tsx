@@ -15,6 +15,7 @@ import { DoctorsEditor } from "./doctors-editor";
 
 export type ConfigValues = {
   contact_email: string;
+  privacy_notice_url: string;
   prices: Record<string, number>;
   doctors: Doctor[];
   engine_enabled: boolean;
@@ -83,6 +84,22 @@ export function SettingsForm({ values, canEdit }: { values: ConfigValues; canEdi
             <Field id="contact_email" label="Email address" error={errors?.contact_email}>
               {(aria) => (
                 <Input {...aria} name="contact_email" type="email" inputMode="email" defaultValue={values.contact_email} placeholder="reception@clinic.co.uk" />
+              )}
+            </Field>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Privacy notice link</CardTitle>
+            <CardDescription>
+              The page on your own website that explains how your practice uses patient data. It is shown on the sign-up page, next to the consent box.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Field id="privacy_notice_url" label="Link (https://…)" error={errors?.privacy_notice_url}>
+              {(aria) => (
+                <Input {...aria} name="privacy_notice_url" type="url" inputMode="url" defaultValue={values.privacy_notice_url} placeholder="https://www.yourclinic.co.uk/privacy" />
               )}
             </Field>
           </CardContent>

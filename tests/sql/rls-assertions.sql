@@ -398,4 +398,35 @@ DO $$ BEGIN
   PERFORM test.assert_eq('rate limit keys are independent', (public.rate_limit_hit('t:y', 60, 2))::int, 1);
 END $$;
 
+-- Monthly reports (migration 0006): clinic-scoped
+INSERT INTO public.monthly_reports (clinic_id, month, data) VALUES
+  ('aaaaaaaa-0000-4000-8000-000000000001', '2026-09-01', '{"v":"A"}'),
+  ('bbbbbbbb-0000-4000-8000-000000000002', '2026-09-01', '{"v":"B"}');
+
+DO $$
+DECLARE v_blocked BOOLEAN := FALSE;
+BEGIN
+  PERFORM test.act_as('11111111-1111-4111-8111-111111111111', 'authenticated');
+  PERFORM test.assert_eq('u1 sees only clinic A monthly reports', (SELECT count(*) FROM public.monthly_reports), 1);
+  INSERT INTO public.monthly_reports (clinic_id, month, data) VALUES ('aaaaaaaa-0000-4000-8000-000000000001', '2026-08-01', '{}');
+  PERFORM test.assert_eq('u1 can save a report for clinic A', (SELECT count(*) FROM public.monthly_reports), 2);
+  BEGIN
+    INSERT INTO public.monthly_reports (clinic_id, month, data) VALUES ('bbbbbbbb-0000-4000-8000-000000000002', '2026-08-01', '{}');
+  EXCEPTION WHEN insufficient_privilege THEN v_blocked := TRUE;
+  END;
+  PERFORM test.assert_eq('u1 cannot save a report for clinic B', v_blocked::int, 1);
+  UPDATE public.monthly_reports SET data = '{"hacked":true}' WHERE clinic_id = 'bbbbbbbb-0000-4000-8000-000000000002';
+  PERFORM test.assert_eq('u1 cannot change clinic B reports', (SELECT count(*) FROM public.monthly_reports WHERE data ? 'hacked'), 0);
+  BEGIN
+    INSERT INTO public.monthly_reports (clinic_id, month, data) VALUES ('aaaaaaaa-0000-4000-8000-000000000001', '2026-08-15', '{}');
+  EXCEPTION WHEN check_violation THEN v_blocked := FALSE;
+  END;
+  PERFORM test.assert_eq('month must be the first day of a month', v_blocked::int, 0);
+END $$;
+
+DO $$ BEGIN
+  PERFORM test.act_as(NULL, 'anon');
+  PERFORM test.assert_eq('anon sees no monthly_reports', (SELECT count(*) FROM public.monthly_reports), 0);
+END $$;
+
 SELECT 'RLS_ALL_OK' AS result;
