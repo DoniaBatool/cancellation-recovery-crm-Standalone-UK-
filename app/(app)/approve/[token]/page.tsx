@@ -74,7 +74,7 @@ export default async function ApprovePage({ params }: { params: Promise<{ token:
           ) : null}
         </dl>
         <div className="flex flex-col gap-2 sm:max-w-xs">
-          <ActionButton action={approvePipeline} pipelineId={card.id} label="Approve" pendingText="Approving…" />
+          <ActionButton action={approvePipeline} pipelineId={card.id} label="Approve" pendingText="Approving…" via="email" />
           <ActionButton action={offerNextPatient} pipelineId={card.id} label="Offer to next patient" pendingText="Working…" variant="outline" />
         </div>
       </section>

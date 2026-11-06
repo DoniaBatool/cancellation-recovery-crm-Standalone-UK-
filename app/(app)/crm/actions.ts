@@ -165,7 +165,7 @@ async function withCard(
   if (!card) return { error: "That card no longer exists." };
 
   try {
-    const result = await run(ctx, card.id, { kind: "user", userId: ctx.user.id, label: ctx.actorLabel });
+    const result = await run(ctx, card.id, { kind: "user", userId: ctx.user.id, label: ctx.actorLabel, via: parsed.data.via });
     revalidatePath("/crm");
     return result;
   } catch (error) {

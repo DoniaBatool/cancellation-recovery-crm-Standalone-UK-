@@ -9,8 +9,18 @@ import { logHistory, transitionStage } from "@/lib/pipeline";
 // Booking in the PMS is always manual (read-only token), so "approve" means: the slot is recovered,
 // the revenue is counted, emails go out, and reception books it in Dentally and taps "Booked".
 
-/** Who pressed the button. A Slack user has no CRM login, so approved_by stays null for them. */
-export type ApprovalActor = { kind: "user"; userId: string; label: string } | { kind: "slack"; label: string };
+/** Which door the approval came through. Stored as recovery_pipeline.approved_via (DPA audit trail). */
+export type ApprovalVia = "portal" | "slack" | "email" | "other";
+
+/**
+ * Who pressed the button. A Slack user has no CRM login, so approved_by stays null for them.
+ * A CRM user came through the board ("portal") unless the /approve/<token> email link said otherwise.
+ */
+export type ApprovalActor =
+  | { kind: "user"; userId: string; label: string; via?: Exclude<ApprovalVia, "slack"> }
+  | { kind: "slack"; label: string };
+
+export const approvalViaOf = (actor: ApprovalActor): ApprovalVia => (actor.kind === "slack" ? "slack" : (actor.via ?? "portal"));
 
 async function loadPatient(deps: EngineDeps, patientId: string | null): Promise<PatientInfo | null> {
   if (!patientId) return null;
@@ -89,6 +99,8 @@ export async function approveBooking(deps: EngineDeps, pipelineId: string, actor
     fields: {
       approved_at: now.toISOString(),
       approved_by: actor.kind === "user" ? actor.userId : null,
+      approved_by_name: actor.label,
+      approved_via: approvalViaOf(actor),
       revenue_saved: pipeline.procedure_price ?? 0,
     },
     now,

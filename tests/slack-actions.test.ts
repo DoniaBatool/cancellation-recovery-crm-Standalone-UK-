@@ -53,6 +53,7 @@ describe("handleSlackAction", () => {
     expect(res.status).toBe(200);
     expect(w.pipeline()).toMatchObject({ stage: "slot_recovered", approved_by: null, revenue_saved: 150 });
     expect(w.history()).toContain("Approved in Slack by sam.");
+    expect(w.pipeline()).toMatchObject({ approved_by_name: "sam", approved_via: "slack", approved_at: NOW.toISOString() });
     expect(w.notifier.approvalResolved).toHaveBeenCalledWith(expect.objectContaining({ text: "✅ Approved by sam" }));
   });
 

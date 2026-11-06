@@ -215,11 +215,24 @@ describe("runMigrateAll", () => {
     expect(n).toBeGreaterThan(0);
   });
 
-  it("dry run makes no calls", async () => {
+  it("dry run makes no calls, but lists the database jobs it would schedule", async () => {
     const w = world();
     const r = await runMigrateAll(w.deps, ["x"], { dryRun: true });
     expect(r.ok).toBe(true);
     expect(w.sqlRuns).toEqual([]);
+    expect(w.logs.join("\n")).toContain("chairfill-purge");
+  });
+
+  it("after the migrations it (re)schedules chairfill-purge by name, without touching the vault", async () => {
+    const w = world();
+    w.deps.files.readFile = async () => "CLINIC_SLUG=a\nSUPABASE_PROJECT_REF=aaaaaaaaaaaaaaaaaaaa\nSUPABASE_ACCESS_TOKEN=sbp_ok\n";
+    const r = await runMigrateAll(w.deps, ["a"]);
+    expect(r.ok).toBe(true);
+    const cron = w.sqlRuns.filter((q) => q.includes("cron.schedule"));
+    expect(cron).toHaveLength(1);
+    expect(cron[0]).toContain("cron.schedule('chairfill-purge', '15 3 * * *'");
+    expect(cron[0]).not.toContain("vault");
+    expect(w.logs.join("\n")).toContain("database jobs scheduled: chairfill-purge");
   });
 
   it("handles no clinic files", async () => {

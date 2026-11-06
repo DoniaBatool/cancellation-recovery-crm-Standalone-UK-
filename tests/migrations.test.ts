@@ -11,6 +11,8 @@ const v21Sql = readFileSync(path.join(root, "supabase/migrations/20270101000003_
 const rateLimitSql = readFileSync(path.join(root, "supabase/migrations/20270101000004_rate_limits.sql"), "utf8");
 const sourceSql = readFileSync(path.join(root, "supabase/migrations/20270101000005_source_qr_privacy_notice.sql"), "utf8");
 const reportsSql = readFileSync(path.join(root, "supabase/migrations/20270101000006_monthly_reports.sql"), "utf8");
+const auditSql = readFileSync(path.join(root, "supabase/migrations/20270101000007_approval_audit_trail.sql"), "utf8");
+const purgeSql = readFileSync(path.join(root, "supabase/migrations/20270101000008_purge_closed_job_personal_data.sql"), "utf8");
 const sha256 = (t: string) => createHash("sha256").update(t).digest("hex");
 
 /** The first ```sql block after a heading in the guide. */
@@ -167,5 +169,55 @@ describe("schema sanity", () => {
     expect((sql.match(/CREATE POLICY/g) ?? []).length).toBe(3);
     expect(sql).not.toMatch(/FOR DELETE|TO anon/);
     expect(sql.match(/private\.user_clinic_ids\(\)/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("0007 adds only the approval audit columns and the offer template version", () => {
+    const sql = code(auditSql);
+    expect("20270101000006_monthly_reports.sql" < "20270101000007_approval_audit_trail.sql").toBe(true);
+    expect(sql).toContain("ADD COLUMN approved_by_name TEXT");
+    expect(sql).toContain("approved_via TEXT CHECK (approved_via IN ('portal','slack','email','other'))");
+    expect(sql).toContain("ALTER TABLE public.waitlist_offers");
+    expect(sql).toContain("ADD COLUMN template_version TEXT");
+    expect(sql).not.toMatch(/CREATE TABLE|DROP |DELETE|UPDATE /i);
+  });
+
+  it("0008 purge: scrubs, never deletes, never updates recovery_pipeline, never touches the waitlist", () => {
+    const sql = code(purgeSql);
+    expect("20270101000007_approval_audit_trail.sql" < "20270101000008_purge_closed_job_personal_data.sql").toBe(true);
+    // guard rules
+    expect(sql).not.toMatch(/\bDELETE\b|\bTRUNCATE\b|\bDROP\b/i);
+    expect(sql).not.toMatch(/UPDATE\s+(public\.)?recovery_pipeline\b(?!_history)/i);
+    expect(sql).not.toMatch(/\bwaitlist\b(?!_offers)/i); // waitlist_offers is only read, to find a job's messages
+    expect(sql).not.toMatch(/(UPDATE|INSERT INTO)\s+(public\.)?waitlist_offers/i);
+    // what it does
+    expect((sql.match(/\bUPDATE\b/gi) ?? []).length).toBe(3);
+    expect(sql).toMatch(/UPDATE public\.cancellation_events/);
+    expect(sql).toMatch(/UPDATE public\.recovery_pipeline_history/);
+    expect(sql).toMatch(/UPDATE public\.messages/);
+    for (const col of ["cancelled_patient_name = NULL", "cancelled_patient_email = NULL", "cancelled_patient_phone = NULL", "cancellation_reason = NULL", "raw_payload = NULL"]) {
+      expect(sql).toContain(col);
+    }
+    expect(sql).toContain("note = NULL");
+    expect(sql).toContain("body = '[removed]'");
+    expect(sql).toContain("to_or_from = '[removed]'");
+    // message columns the health check and delivery stats read stay untouched
+    expect(sql).not.toMatch(/\b(channel|direction|status|provider_id|created_at)\s*=\s*('|NULL)/);
+    // finished-job rule
+    expect(sql).toContain("'slot_recovered', 'expired_manual'");
+    expect(sql).toContain("COALESCE(p.confirmed_at, p.expired_at, p.updated_at) < cutoff");
+    expect(sql).toContain("e.slot_datetime < cutoff");
+  });
+
+  it("0008 purge: function is private, security definer, locked down; log table has RLS and no policies", () => {
+    const sql = code(purgeSql);
+    expect(sql).toContain("CREATE TABLE public.purge_log");
+    expect(sql).toContain("ALTER TABLE public.purge_log ENABLE ROW LEVEL SECURITY");
+    expect(sql).not.toMatch(/CREATE POLICY/);
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION private.purge_closed_job_personal_data(retention INTERVAL DEFAULT INTERVAL '30 days')");
+    expect(sql).toContain("SECURITY DEFINER");
+    expect(sql).toContain("SET search_path = public, pg_temp");
+    expect(sql).toContain("REVOKE ALL ON FUNCTION private.purge_closed_job_personal_data(INTERVAL) FROM PUBLIC, anon, authenticated");
+    expect(sql).not.toMatch(/GRANT /);
+    expect(sql).toContain("INSERT INTO public.purge_log");
   });
 });

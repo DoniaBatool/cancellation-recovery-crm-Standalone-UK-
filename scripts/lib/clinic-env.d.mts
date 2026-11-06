@@ -1,5 +1,7 @@
 export const REQUIRED_KEYS: string[];
-export const CRON_JOBS: Array<{ name: string; schedule: string; path: string; needs: string | null }>;
+export const CRON_JOBS: Array<{ name: string; schedule: string; path: string | null; sql: string | null; needs: string | null }>;
+export function sqlJobNames(): string[];
+export function sqlJobsSql(): string;
 export type EnvValues = Record<string, string>;
 export type Migration = { file: string; version: string; name: string };
 export function parseEnv(text: string): EnvValues;
@@ -26,6 +28,6 @@ export function sortedMigrations(files: string[]): Migration[];
 export function pendingMigrations(files: string[], applied: Array<{ version: string; name: string | null }>): Migration[];
 export const ENSURE_MIGRATION_TABLE_SQL: string;
 export function migrationRunSql(migration: Migration, sql: string): string;
-export function cronJobsFor(v: EnvValues): Array<{ name: string; schedule: string; path: string; needs: string | null; enabled: boolean }>;
+export function cronJobsFor(v: EnvValues): Array<{ name: string; schedule: string; path: string | null; sql: string | null; needs: string | null; enabled: boolean }>;
 export function cronSql(v: EnvValues): string;
 export function buildPlan(v: EnvValues): string[];

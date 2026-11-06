@@ -13,6 +13,7 @@ import { cn } from "@/lib/cn";
 export const metadata: Metadata = { title: "Activity" };
 
 const PAGE_SIZE = 100;
+const APPROVAL_VIA_LABELS: Record<string, string> = { portal: "the CRM", slack: "Slack", email: "the email link", other: "another route" };
 const asStage = (v: string | null): Stage | null => (v && (STAGES as readonly string[]).includes(v) ? (v as Stage) : null);
 
 export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ actor?: string }> }) {
@@ -33,7 +34,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
   const pipelineIds = [...new Set((rows ?? []).map((r) => r.pipeline_id))];
   const { data: pipelines } = pipelineIds.length
-    ? await supabase.from("recovery_pipeline").select("id, cancellation_event_id").in("id", pipelineIds)
+    ? await supabase.from("recovery_pipeline").select("id, cancellation_event_id, approved_at, approved_by_name, approved_via").in("id", pipelineIds)
     : { data: [] };
   const eventIds = [...new Set((pipelines ?? []).map((p) => p.cancellation_event_id))];
   const { data: events } = eventIds.length
@@ -42,6 +43,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const eventByPipeline = new Map(
     (pipelines ?? []).map((p) => [p.id, (events ?? []).find((e) => e.id === p.cancellation_event_id)]),
   );
+
+  const approvalByPipeline = new Map((pipelines ?? []).map((p) => [p.id, p]));
 
   const filters: { key: string; label: string; href: string; active: boolean }[] = [
     { key: "all", label: "All", href: "/crm/activity", active: !actor },
@@ -79,6 +82,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             const from = asStage(r.from_stage);
             const to = asStage(r.to_stage);
             const event = eventByPipeline.get(r.pipeline_id);
+            // Audit trail (DPA 5.6): the approval is read from the card, so it survives the 30-day note purge.
+            const approval = r.to_stage === "slot_recovered" ? approvalByPipeline.get(r.pipeline_id) : undefined;
             const who = isActor(r.triggered_by) ? ACTOR_LABELS[r.triggered_by] : r.triggered_by;
             return (
               <li key={r.id} className="rounded-lg border bg-card px-4 py-3">
@@ -103,6 +108,12 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                   <span className="ml-auto text-xs text-muted-foreground">{who}</span>
                 </div>
                 {r.note ? <p className="mt-1.5 text-sm text-foreground">{r.note}</p> : null}
+                {approval?.approved_at && approval.approved_by_name && approval.approved_via ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Approved by {approval.approved_by_name} via {APPROVAL_VIA_LABELS[approval.approved_via] ?? approval.approved_via} at{" "}
+                    {formatSlot(approval.approved_at, clinic.timezone)}
+                  </p>
+                ) : null}
               </li>
             );
           })}

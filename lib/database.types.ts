@@ -404,6 +404,33 @@ export type Database = {
           },
         ]
       }
+      purge_log: {
+        Row: {
+          events_scrubbed: number
+          history_notes_cleared: number
+          id: number
+          messages_scrubbed: number
+          ran_at: string
+          retention: string
+        }
+        Insert: {
+          events_scrubbed?: number
+          history_notes_cleared?: number
+          id?: number
+          messages_scrubbed?: number
+          ran_at?: string
+          retention: string
+        }
+        Update: {
+          events_scrubbed?: number
+          history_notes_cleared?: number
+          id?: number
+          messages_scrubbed?: number
+          ran_at?: string
+          retention?: string
+        }
+        Relationships: []
+      }
       rate_limits: {
         Row: {
           hits: number
@@ -429,6 +456,8 @@ export type Database = {
           approval_token_expires_at: string | null
           approved_at: string | null
           approved_by: string | null
+          approved_by_name: string | null
+          approved_via: string | null
           booked_in_pms_at: string | null
           cancellation_event_id: string
           clinic_id: string
@@ -453,6 +482,8 @@ export type Database = {
           approval_token_expires_at?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          approved_by_name?: string | null
+          approved_via?: string | null
           booked_in_pms_at?: string | null
           cancellation_event_id: string
           clinic_id: string
@@ -477,6 +508,8 @@ export type Database = {
           approval_token_expires_at?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          approved_by_name?: string | null
+          approved_via?: string | null
           booked_in_pms_at?: string | null
           cancellation_event_id?: string
           clinic_id?: string
@@ -647,6 +680,7 @@ export type Database = {
           responded_at: string | null
           responded_via: string | null
           response: string
+          template_version: string | null
           waitlist_patient_id: string
         }
         Insert: {
@@ -658,6 +692,7 @@ export type Database = {
           responded_at?: string | null
           responded_via?: string | null
           response?: string
+          template_version?: string | null
           waitlist_patient_id: string
         }
         Update: {
@@ -669,6 +704,7 @@ export type Database = {
           responded_at?: string | null
           responded_via?: string | null
           response?: string
+          template_version?: string | null
           waitlist_patient_id?: string
         }
         Relationships: [

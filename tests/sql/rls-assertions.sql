@@ -429,4 +429,122 @@ DO $$ BEGIN
   PERFORM test.assert_eq('anon sees no monthly_reports', (SELECT count(*) FROM public.monthly_reports), 0);
 END $$;
 
+-- ---------------------------------------------------------------------------
+-- 30-day purge (migration 0008). Runs inside a transaction that is rolled back.
+-- ---------------------------------------------------------------------------
+BEGIN;
+
+INSERT INTO public.cancellation_events (id, clinic_id, slot_datetime, procedure_type, cancelled_patient_name, cancelled_patient_email, cancelled_patient_phone, cancellation_reason, raw_payload, pms_source) VALUES
+  ('e0000001-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', now() - interval '60 days', 'cleaning', 'Old Slot', 'old@x.test', '+447700900101', 'ill', '{"a":1}', 'manual'),
+  ('e0000002-0000-4000-8000-000000000002', 'aaaaaaaa-0000-4000-8000-000000000001', now() + interval '2 days', 'filling', 'Closed Long Ago', 'closed@x.test', '+447700900102', 'work', '{"b":2}', 'manual'),
+  ('e0000003-0000-4000-8000-000000000003', 'aaaaaaaa-0000-4000-8000-000000000001', now() + interval '2 days', 'filling', 'Closed Recently', 'recent@x.test', '+447700900103', 'work', '{"c":3}', 'manual'),
+  ('e0000004-0000-4000-8000-000000000004', 'aaaaaaaa-0000-4000-8000-000000000001', now() + interval '2 days', 'filling', 'Still Open', 'open@x.test', '+447700900104', 'work', '{"d":4}', 'manual');
+
+INSERT INTO public.recovery_pipeline (id, clinic_id, cancellation_event_id, waitlist_patient_id, stage, confirmed_at, revenue_saved, procedure_price, notes, approved_by_name, approved_via, approved_at) VALUES
+  ('f0000001-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', 'e0000001-0000-4000-8000-000000000001', 'a1a1a1a1-0000-4000-8000-000000000001', 'offer_sent', NULL, NULL, 100, 'staff note', NULL, NULL, NULL),
+  ('f0000002-0000-4000-8000-000000000002', 'aaaaaaaa-0000-4000-8000-000000000001', 'e0000002-0000-4000-8000-000000000002', 'a1a1a1a1-0000-4000-8000-000000000001', 'slot_recovered', now() - interval '40 days', 150, 150, NULL, 'Amy', 'slack', now() - interval '40 days'),
+  ('f0000003-0000-4000-8000-000000000003', 'aaaaaaaa-0000-4000-8000-000000000001', 'e0000003-0000-4000-8000-000000000003', 'a1a1a1a1-0000-4000-8000-000000000001', 'slot_recovered', now() - interval '5 days', 150, 150, NULL, 'Sam', 'portal', now() - interval '5 days'),
+  ('f0000004-0000-4000-8000-000000000004', 'aaaaaaaa-0000-4000-8000-000000000001', 'e0000004-0000-4000-8000-000000000004', 'a1a1a1a1-0000-4000-8000-000000000001', 'offer_sent', NULL, NULL, 150, NULL, NULL, NULL, NULL);
+
+INSERT INTO public.recovery_pipeline_history (pipeline_id, to_stage, note) VALUES
+  ('f0000001-0000-4000-8000-000000000001', 'offer_sent', 'Offer sent to Alice'),
+  ('f0000002-0000-4000-8000-000000000002', 'slot_recovered', 'Approved in Slack by Amy'),
+  ('f0000003-0000-4000-8000-000000000003', 'slot_recovered', 'Approved by sam@a.test'),
+  ('f0000004-0000-4000-8000-000000000004', 'offer_sent', 'Offer sent to Alice');
+
+INSERT INTO public.waitlist_offers (id, pipeline_id, waitlist_patient_id, template_version) VALUES
+  ('c0000002-0000-4000-8000-000000000002', 'f0000002-0000-4000-8000-000000000002', 'a1a1a1a1-0000-4000-8000-000000000001', 'offer-email-v1');
+
+INSERT INTO public.messages (id, clinic_id, pipeline_id, offer_id, waitlist_patient_id, channel, direction, to_or_from, body, provider_id, status, created_at) VALUES
+  ('d0000001-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', 'f0000001-0000-4000-8000-000000000001', NULL, NULL, 'sms', 'out', '+447700900001', 'Hi Alice, slot offer', 'SM1', 'delivered', now() - interval '59 days'),
+  ('d0000002-0000-4000-8000-000000000002', 'aaaaaaaa-0000-4000-8000-000000000001', NULL, 'c0000002-0000-4000-8000-000000000002', NULL, 'email', 'out', 'alice@x.test', 'Offer email', NULL, 'sent', now() - interval '41 days'),
+  ('d0000003-0000-4000-8000-000000000003', 'aaaaaaaa-0000-4000-8000-000000000001', 'f0000002-0000-4000-8000-000000000002', NULL, NULL, 'slack', 'out', 'channel', 'Approve?', NULL, 'sent', now() - interval '41 days'),
+  ('d0000004-0000-4000-8000-000000000004', 'aaaaaaaa-0000-4000-8000-000000000001', NULL, NULL, 'a1a1a1a1-0000-4000-8000-000000000001', 'sms', 'in', '+447700900001', 'old unlinked reply', 'SM4', 'received', now() - interval '45 days'),
+  ('d0000005-0000-4000-8000-000000000005', 'aaaaaaaa-0000-4000-8000-000000000001', NULL, NULL, 'a1a1a1a1-0000-4000-8000-000000000001', 'sms', 'in', '+447700900001', 'recent unlinked reply', 'SM5', 'received', now() - interval '2 days'),
+  ('d0000006-0000-4000-8000-000000000006', 'aaaaaaaa-0000-4000-8000-000000000001', 'f0000004-0000-4000-8000-000000000004', NULL, NULL, 'sms', 'out', '+447700900001', 'open job text', 'SM6', 'sent', now() - interval '1 day'),
+  ('d0000007-0000-4000-8000-000000000007', 'aaaaaaaa-0000-4000-8000-000000000001', 'f0000003-0000-4000-8000-000000000003', NULL, NULL, 'email', 'out', 'alice@x.test', 'recent closed text', NULL, 'sent', now() - interval '5 days');
+
+-- Snapshots to compare after the purge.
+CREATE TEMP TABLE before_pipeline AS SELECT id, md5(p::text) AS h FROM public.recovery_pipeline p;
+CREATE TEMP TABLE before_waitlist AS SELECT id, md5(w::text) AS h FROM public.waitlist w;
+CREATE TEMP TABLE before_counts AS SELECT
+  (SELECT count(*) FROM public.cancellation_events) AS e, (SELECT count(*) FROM public.recovery_pipeline) AS p,
+  (SELECT count(*) FROM public.recovery_pipeline_history) AS h, (SELECT count(*) FROM public.messages) AS m,
+  (SELECT count(*) FROM public.waitlist_offers) AS o, (SELECT count(*) FROM public.waitlist) AS w;
+CREATE TEMP TABLE before_messages AS SELECT id, channel, direction, status, provider_id, created_at FROM public.messages;
+
+DO $$
+DECLARE r RECORD;
+BEGIN
+  -- Only the service role / owner may call it.
+  PERFORM test.act_as('11111111-1111-4111-8111-111111111111', 'authenticated');
+  BEGIN
+    PERFORM private.purge_closed_job_personal_data();
+    RAISE EXCEPTION 'PURGE FAIL: authenticated user could call the purge';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  RESET ROLE;
+  PERFORM test.act_as(NULL, 'anon');
+  BEGIN
+    PERFORM private.purge_closed_job_personal_data();
+    RAISE EXCEPTION 'PURGE FAIL: anon could call the purge';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  RESET ROLE;
+  PERFORM test.act_as('11111111-1111-4111-8111-111111111111', 'authenticated');
+  BEGIN
+    PERFORM count(*) FROM public.purge_log;
+    RAISE EXCEPTION 'PURGE FAIL: authenticated user could read purge_log';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  RESET ROLE;
+
+  SELECT * INTO r FROM private.purge_closed_job_personal_data();
+  PERFORM test.assert_eq('2 events scrubbed (old slot + long-closed)', r.events_scrubbed, 2);
+  PERFORM test.assert_eq('2 history notes cleared', r.history_notes_cleared, 2);
+  PERFORM test.assert_eq('4 messages scrubbed (3 job messages + 1 old unlinked)', r.messages_scrubbed, 4);
+END $$;
+
+DO $$
+DECLARE r RECORD;
+BEGIN
+  -- Scrubbed.
+  PERFORM test.assert_eq('old-slot event PII gone', (SELECT count(*) FROM public.cancellation_events WHERE id IN ('e0000001-0000-4000-8000-000000000001','e0000002-0000-4000-8000-000000000002') AND (cancelled_patient_name IS NOT NULL OR cancelled_patient_email IS NOT NULL OR cancelled_patient_phone IS NOT NULL OR cancellation_reason IS NOT NULL OR raw_payload IS NOT NULL)), 0);
+  PERFORM test.assert_eq('recent and open events keep their data', (SELECT count(*) FROM public.cancellation_events WHERE id IN ('e0000003-0000-4000-8000-000000000003','e0000004-0000-4000-8000-000000000004') AND cancelled_patient_name IS NOT NULL AND raw_payload IS NOT NULL), 2);
+  PERFORM test.assert_eq('event dates and procedure kept', (SELECT count(*) FROM public.cancellation_events WHERE id IN ('e0000001-0000-4000-8000-000000000001','e0000002-0000-4000-8000-000000000002') AND slot_datetime IS NOT NULL AND procedure_type IS NOT NULL), 2);
+  PERFORM test.assert_eq('history notes of finished jobs cleared', (SELECT count(*) FROM public.recovery_pipeline_history WHERE pipeline_id IN ('f0000001-0000-4000-8000-000000000001','f0000002-0000-4000-8000-000000000002') AND note IS NOT NULL), 0);
+  PERFORM test.assert_eq('history notes of recent/open jobs kept', (SELECT count(*) FROM public.recovery_pipeline_history WHERE pipeline_id IN ('f0000003-0000-4000-8000-000000000003','f0000004-0000-4000-8000-000000000004') AND note IS NOT NULL), 2);
+  PERFORM test.assert_eq('finished-job and old unlinked messages replaced', (SELECT count(*) FROM public.messages WHERE id IN ('d0000001-0000-4000-8000-000000000001','d0000002-0000-4000-8000-000000000002','d0000003-0000-4000-8000-000000000003','d0000004-0000-4000-8000-000000000004') AND body = '[removed]' AND to_or_from = '[removed]'), 4);
+  PERFORM test.assert_eq('open, recent-closed and recent unlinked messages untouched', (SELECT count(*) FROM public.messages WHERE id IN ('d0000005-0000-4000-8000-000000000005','d0000006-0000-4000-8000-000000000006','d0000007-0000-4000-8000-000000000007') AND body <> '[removed]' AND to_or_from <> '[removed]'), 3);
+
+  -- Never deleted, never changed where reports and delivery stats look.
+  PERFORM test.assert_eq('no table lost a row', (SELECT count(*) FROM before_counts b WHERE b.e = (SELECT count(*) FROM public.cancellation_events) AND b.p = (SELECT count(*) FROM public.recovery_pipeline) AND b.h = (SELECT count(*) FROM public.recovery_pipeline_history) AND b.m = (SELECT count(*) FROM public.messages) AND b.o = (SELECT count(*) FROM public.waitlist_offers) AND b.w = (SELECT count(*) FROM public.waitlist)), 1);
+  PERFORM test.assert_eq('recovery_pipeline rows byte-identical (updated_at not bumped, reports unchanged)', (SELECT count(*) FROM before_pipeline b JOIN public.recovery_pipeline p ON p.id = b.id WHERE md5(p::text) <> b.h), 0);
+  PERFORM test.assert_eq('waitlist rows byte-identical', (SELECT count(*) FROM before_waitlist b JOIN public.waitlist w ON w.id = b.id WHERE md5(w::text) <> b.h), 0);
+  PERFORM test.assert_eq('message channel/direction/status/provider_id/created_at unchanged', (SELECT count(*) FROM before_messages b JOIN public.messages m ON m.id = b.id WHERE (m.channel, m.direction, m.status, m.provider_id, m.created_at) IS DISTINCT FROM (b.channel, b.direction, b.status, b.provider_id, b.created_at)), 0);
+  PERFORM test.assert_eq('audit columns survive the purge', (SELECT count(*) FROM public.recovery_pipeline WHERE id = 'f0000002-0000-4000-8000-000000000002' AND approved_by_name = 'Amy' AND approved_via = 'slack' AND approved_at IS NOT NULL), 1);
+  PERFORM test.assert_eq('offer template_version survives the purge', (SELECT count(*) FROM public.waitlist_offers WHERE template_version = 'offer-email-v1'), 1);
+
+  -- Idempotent: a second run changes nothing.
+  SELECT * INTO r FROM private.purge_closed_job_personal_data();
+  PERFORM test.assert_eq('second run scrubs 0 events', r.events_scrubbed, 0);
+  PERFORM test.assert_eq('second run clears 0 notes', r.history_notes_cleared, 0);
+  PERFORM test.assert_eq('second run scrubs 0 messages', r.messages_scrubbed, 0);
+  PERFORM test.assert_eq('one purge_log row per run', (SELECT count(*) FROM public.purge_log), 2);
+  PERFORM test.assert_eq('purge_log records the 30-day retention', (SELECT count(*) FROM public.purge_log WHERE retention = interval '30 days'), 2);
+END $$;
+
+-- The audit CHECK only allows the real approval paths.
+DO $$
+DECLARE v_blocked BOOLEAN := FALSE;
+BEGIN
+  BEGIN
+    UPDATE public.recovery_pipeline SET approved_via = 'carrier-pigeon' WHERE id = 'f0000004-0000-4000-8000-000000000004';
+  EXCEPTION WHEN check_violation THEN v_blocked := TRUE;
+  END;
+  PERFORM test.assert_eq('approved_via rejects unknown channels', v_blocked::int, 1);
+END $$;
+
+ROLLBACK;
+
 SELECT 'RLS_ALL_OK' AS result;

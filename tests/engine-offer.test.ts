@@ -20,6 +20,12 @@ describe("startOffers", () => {
     expect(w.tables.waitlist?.find((p) => p.id === "b")?.last_contacted_at).toBe(NOW.toISOString());
   });
 
+  it("records which offer text version was sent on the offer row", async () => {
+    const w = makeWorld({});
+    await startOffers(w.deps, "p1");
+    expect(w.offers()[0]).toMatchObject({ template_version: "offer-email-v1" });
+  });
+
   it("only starts from cancellation_detected", async () => {
     const w = makeWorld({ pipeline: { stage: "offer_sent" } });
     expect((await startOffers(w.deps, "p1")).status).toBe("skipped");

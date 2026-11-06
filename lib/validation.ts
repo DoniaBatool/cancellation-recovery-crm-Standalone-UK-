@@ -351,4 +351,6 @@ export const memberTargetSchema = z.object({ user_id: z.uuid() });
 export const pipelineTargetSchema = z.object({
   pipeline_id: z.uuid(),
   reason: optionalText(300),
+  // Set by the /approve/<token> email page only; anything else counts as the CRM board ("portal").
+  via: z.literal("email").optional().catch(undefined),
 });

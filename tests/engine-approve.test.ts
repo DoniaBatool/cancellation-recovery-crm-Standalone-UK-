@@ -31,6 +31,24 @@ describe("approveBooking", () => {
     expect(w.history()).toContain("Approved by reception@clinic.co.uk.");
   });
 
+  it("audit trail: portal approval stores who, when and the CRM board as the channel", async () => {
+    const w = makeWorld({ pipeline: waiting, offers });
+    await approveBooking(w.deps, "p1", user);
+    expect(w.pipeline()).toMatchObject({ approved_at: NOW.toISOString(), approved_by: "u1", approved_by_name: "reception@clinic.co.uk", approved_via: "portal" });
+  });
+
+  it("audit trail: the /approve email link is stored as 'email' (still a signed-in CRM user)", async () => {
+    const w = makeWorld({ pipeline: waiting, offers });
+    await approveBooking(w.deps, "p1", { ...user, via: "email" });
+    expect(w.pipeline()).toMatchObject({ approved_at: NOW.toISOString(), approved_by: "u1", approved_by_name: "reception@clinic.co.uk", approved_via: "email" });
+  });
+
+  it("audit trail: Slack stores the Slack name and channel, with approved_by empty", async () => {
+    const w = makeWorld({ pipeline: waiting, offers });
+    await approveBooking(w.deps, "p1", { kind: "slack", label: "Amy" });
+    expect(w.pipeline()).toMatchObject({ approved_at: NOW.toISOString(), approved_by: null, approved_by_name: "Amy", approved_via: "slack" });
+  });
+
   it("sends the confirmations with the dentist's email and logs the summary", async () => {
     const w = makeWorld({ pipeline: waiting, offers });
     await approveBooking(w.deps, "p1", user);

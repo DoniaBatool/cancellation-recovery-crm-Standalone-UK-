@@ -19,17 +19,21 @@ export function ActionButton({
   label,
   pendingText,
   variant,
+  via,
 }: {
   action: CardAction;
   pipelineId: string;
   label: string;
   pendingText: string;
   variant?: ButtonProps["variant"];
+  /** "email" when the button sits on the /approve/<token> page (recorded in the approval audit trail). */
+  via?: "email";
 }) {
   const [state, formAction] = useActionState(action, null);
   return (
     <form action={formAction} className="flex flex-col gap-1">
       <input type="hidden" name="pipeline_id" value={pipelineId} />
+      {via ? <input type="hidden" name="via" value={via} /> : null}
       <SubmitButton size="sm" variant={variant} pendingText={pendingText}>
         {label}
       </SubmitButton>

@@ -43,10 +43,14 @@ const PASS_THROUGH_KEYS = [
   "EXTERNAL_API_KEY",
 ];
 
+// Two kinds of job, one list: an HTTP job (has `path`) calls the app's /api/cron route with the cron secret;
+// a SQL job (has `sql`) runs inside the database, no app involved. Both are scheduled by cronSql().
 export const CRON_JOBS = [
-  { name: "offers-tick", schedule: "* * * * *", path: "/api/cron/offers-tick", needs: null },
-  { name: "dentally-poll", schedule: "*/5 * * * *", path: "/api/cron/dentally-poll", needs: "DENTALLY_API_TOKEN" },
-  { name: "health-check", schedule: "0 * * * *", path: "/api/cron/health-check", needs: null },
+  { name: "offers-tick", schedule: "* * * * *", path: "/api/cron/offers-tick", sql: null, needs: null },
+  { name: "dentally-poll", schedule: "*/5 * * * *", path: "/api/cron/dentally-poll", sql: null, needs: "DENTALLY_API_TOKEN" },
+  { name: "health-check", schedule: "0 * * * *", path: "/api/cron/health-check", sql: null, needs: null },
+  // 30-day personal-data purge (DPA 8.1), daily 03:15 UTC. Function: supabase/migrations/...0008_*.sql
+  { name: "chairfill-purge", schedule: "15 3 * * *", path: null, sql: "select private.purge_closed_job_personal_data()", needs: null },
 ];
 
 // ---------------------------------------------------------------------------
@@ -330,19 +334,34 @@ export function cronSql(v) {
     upsertSecret("app_url", url, "Public address of this clinic's app"),
     "end $$;",
   ];
-  for (const job of jobs) {
-    if (job.enabled) {
-      lines.push(
-        `select cron.schedule(${q(job.name)}, ${q(job.schedule)}, $job$ select net.http_get(` +
-          `url := (select decrypted_secret from vault.decrypted_secrets where name = 'app_url') || ${q(job.path)}, ` +
-          `headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')), ` +
-          `timeout_milliseconds := 25000) $job$);`,
-      );
-    } else {
-      lines.push(`select cron.unschedule(${q(job.name)}) where exists (select 1 from cron.job where jobname = ${q(job.name)});`);
-    }
-  }
+  for (const job of jobs) lines.push(jobStatement(job));
   return lines.join("\n");
+}
+
+/** One job: schedule (cron.schedule upserts by name, so re-running is safe) or unschedule when not enabled. */
+function jobStatement(job) {
+  if (!job.enabled) {
+    return `select cron.unschedule(${q(job.name)}) where exists (select 1 from cron.job where jobname = ${q(job.name)});`;
+  }
+  if (job.sql) return `select cron.schedule(${q(job.name)}, ${q(job.schedule)}, $job$ ${job.sql} $job$);`;
+  return (
+    `select cron.schedule(${q(job.name)}, ${q(job.schedule)}, $job$ select net.http_get(` +
+    `url := (select decrypted_secret from vault.decrypted_secrets where name = 'app_url') || ${q(job.path)}, ` +
+    `headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')), ` +
+    `timeout_milliseconds := 25000) $job$);`
+  );
+}
+
+/** Names of the jobs that run inside the database (no app URL or secret needed). */
+export const sqlJobNames = () => CRON_JOBS.filter((j) => j.sql).map((j) => j.name);
+
+/**
+ * Only the in-database jobs, for clinics that already exist: clinic:migrate-all runs this after the
+ * migrations so a new database function (e.g. the purge) gets its schedule without re-running clinic:setup.
+ * Same definitions as cronSql(); it never touches the vault secrets or the HTTP jobs.
+ */
+export function sqlJobsSql() {
+  return ["create extension if not exists pg_cron;", ...CRON_JOBS.filter((j) => j.sql).map((j) => jobStatement({ ...j, enabled: true }))].join("\n");
 }
 
 // ---------------------------------------------------------------------------

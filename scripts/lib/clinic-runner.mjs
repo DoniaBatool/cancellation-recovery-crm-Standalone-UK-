@@ -10,6 +10,8 @@ import {
   buildPlan,
   cronJobsFor,
   cronSql,
+  sqlJobNames,
+  sqlJobsSql,
   migrationRunSql,
   parseEnv,
   pendingMigrations,
@@ -207,13 +209,16 @@ export async function runMigrateAll(deps, filePaths, { dryRun = false } = {}) {
       continue;
     }
     if (dryRun) {
-      say(deps, `• ${label}: would apply pending migrations to project ${v.SUPABASE_PROJECT_REF}`);
+      say(deps, `• ${label}: would apply pending migrations to project ${v.SUPABASE_PROJECT_REF} and schedule the database jobs: ${sqlJobNames().join(", ")}`);
       results.push({ clinic: label, ok: true, dryRun: true });
       continue;
     }
     try {
-      const applied = await applyMigrations(deps, deps.mgmt(v.SUPABASE_ACCESS_TOKEN), v.SUPABASE_PROJECT_REF);
-      say(deps, `✓ ${label}: ${applied.length ? `applied ${applied.join(", ")}` : "already up to date"}`);
+      const mgmt = deps.mgmt(v.SUPABASE_ACCESS_TOKEN);
+      const applied = await applyMigrations(deps, mgmt, v.SUPABASE_PROJECT_REF);
+      // The in-database cron jobs (chairfill-purge) are (re)scheduled by name, so this is safe on every run.
+      await mgmt.query(v.SUPABASE_PROJECT_REF, sqlJobsSql());
+      say(deps, `✓ ${label}: ${applied.length ? `applied ${applied.join(", ")}` : "already up to date"}; database jobs scheduled: ${sqlJobNames().join(", ")}`);
       results.push({ clinic: label, ok: true, applied });
     } catch (error) {
       say(deps, `✗ ${label}: ${error instanceof Error ? error.message : String(error)}`);

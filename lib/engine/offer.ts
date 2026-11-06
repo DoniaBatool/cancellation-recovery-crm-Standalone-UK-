@@ -5,6 +5,7 @@ import type { OfferChannel } from "@/lib/engine/notifier";
 import { formatTime } from "@/lib/format";
 import { logHistory, transitionStage } from "@/lib/pipeline";
 import { quietHoursResume } from "@/lib/quiet-hours";
+import { templateVersionFor } from "@/lib/template-versions";
 import { matchWaitlist, type Candidate } from "@/lib/waitlist-matching";
 
 // Offers out and moving on. Source: SYSTEM_BUILD_GUIDE.md §7 E4 (startOffers, offerNext) and
@@ -105,6 +106,7 @@ export async function offerNext(
     waitlist_patient_id: m.patient.id,
     offer_token: uuidOf(deps),
     offer_expires_at: expiresAt,
+    template_version: templateVersionFor(usable(m.patient)),
   }));
   const { data: inserted, error: insertError } = await deps.db
     .from("waitlist_offers")

@@ -7,6 +7,8 @@ import {
   buildPlan,
   cronJobsFor,
   cronSql,
+  sqlJobNames,
+  sqlJobsSql,
   migrationRunSql,
   parseEnv,
   parseMigrationFile,
@@ -217,12 +219,33 @@ describe("cron jobs", () => {
   });
 
   it("points at routes that exist in the app and uses the guide's schedules", () => {
-    for (const job of cronJobsFor({ ...good, DENTALLY_API_TOKEN: "t" })) {
-      const file = path.join(root, "app", job.path, "route.ts");
+    for (const job of cronJobsFor({ ...good, DENTALLY_API_TOKEN: "t" }).filter((j) => j.path)) {
+      const file = path.join(root, "app", job.path!, "route.ts");
       expect(() => readFileSync(file, "utf8")).not.toThrow();
     }
     const byName = Object.fromEntries(cronJobsFor(good).map((j) => [j.name, j.schedule]));
     expect(byName).toMatchObject({ "offers-tick": "* * * * *", "dentally-poll": "*/5 * * * *", "health-check": "0 * * * *" });
+  });
+
+  it("includes the daily 03:15 UTC personal-data purge as an in-database job", () => {
+    const purge = cronJobsFor(good).find((j) => j.name === "chairfill-purge");
+    expect(purge).toMatchObject({ schedule: "15 3 * * *", sql: "select private.purge_closed_job_personal_data()", path: null, enabled: true });
+    expect(sqlJobNames()).toEqual(["chairfill-purge"]);
+  });
+
+  it("schedules the purge by name inside cronSql, with no HTTP call and no app secret", () => {
+    const sql = cronSql({ ...good, CRON_SECRET: "c".repeat(40) });
+    expect(sql).toContain("cron.schedule('chairfill-purge', '15 3 * * *', $job$ select private.purge_closed_job_personal_data() $job$);");
+    const purgeLine = sql.split("\n").find((l) => l.includes("chairfill-purge"))!;
+    expect(purgeLine).not.toContain("net.http_get");
+  });
+
+  it("sqlJobsSql reschedules only the database jobs (safe to re-run on existing clinics)", () => {
+    const sql = sqlJobsSql();
+    expect(sql).toContain("create extension if not exists pg_cron");
+    expect(sql).toContain("cron.schedule('chairfill-purge', '15 3 * * *'");
+    expect(sql).not.toContain("vault");
+    expect(sql).not.toContain("offers-tick");
   });
 
   it("builds SQL that reads the secret from Vault and sends a Bearer header", () => {
