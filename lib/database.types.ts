@@ -412,6 +412,7 @@ export type Database = {
           messages_scrubbed: number
           ran_at: string
           retention: string
+          waitlist_scrubbed: number
         }
         Insert: {
           events_scrubbed?: number
@@ -420,6 +421,7 @@ export type Database = {
           messages_scrubbed?: number
           ran_at?: string
           retention: string
+          waitlist_scrubbed?: number
         }
         Update: {
           events_scrubbed?: number
@@ -428,6 +430,7 @@ export type Database = {
           messages_scrubbed?: number
           ran_at?: string
           retention?: string
+          waitlist_scrubbed?: number
         }
         Relationships: []
       }
@@ -610,6 +613,7 @@ export type Database = {
           preferred_doctors: string[]
           preferred_procedures: string[]
           preferred_times: string[]
+          scrubbed_at: string | null
           sms_opt_out: boolean
           sms_opt_out_at: string | null
           updated_at: string
@@ -633,6 +637,7 @@ export type Database = {
           preferred_doctors?: string[]
           preferred_procedures?: string[]
           preferred_times?: string[]
+          scrubbed_at?: string | null
           sms_opt_out?: boolean
           sms_opt_out_at?: string | null
           updated_at?: string
@@ -656,6 +661,7 @@ export type Database = {
           preferred_doctors?: string[]
           preferred_procedures?: string[]
           preferred_times?: string[]
+          scrubbed_at?: string | null
           sms_opt_out?: boolean
           sms_opt_out_at?: string | null
           updated_at?: string

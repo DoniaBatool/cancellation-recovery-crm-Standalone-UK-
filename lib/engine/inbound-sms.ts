@@ -3,7 +3,7 @@ import { advance } from "@/lib/engine/offer";
 import { respondToOffer } from "@/lib/engine/respond";
 import { logHistory } from "@/lib/pipeline";
 import { parseSmsReply } from "@/lib/sms-reply";
-import { noReceivedSms, startSms, stopSms, tooLateSms, unknownReplySms, yesReceivedSms } from "@/lib/sms-templates";
+import { noReceivedSms, startScrubbedSms, startSms, stopSms, tooLateSms, unknownReplySms, yesReceivedSms } from "@/lib/sms-templates";
 
 // A patient's text reply. Source: SYSTEM_BUILD_GUIDE.md §7 E5.
 // Returns the text to send back (as TwiML), or null for an empty reply.
@@ -14,7 +14,7 @@ export async function handleInboundSms(deps: EngineDeps, sms: InboundSms): Promi
   const now = nowOf(deps);
 
   // Everyone on a waitlist with this number (family members can share one).
-  const { data: rows } = await deps.db.from("waitlist").select("id, clinic_id, sms_opt_out").eq("phone", sms.from);
+  const { data: rows } = await deps.db.from("waitlist").select("id, clinic_id, sms_opt_out, scrubbed_at").eq("phone", sms.from);
   const patients = rows ?? [];
   const first = patients[0];
   if (!first) return { reply: null }; // not one of our patients: nothing to attach it to
@@ -70,8 +70,13 @@ export async function handleInboundSms(deps: EngineDeps, sms: InboundSms): Promi
   }
 
   if (kind === "start") {
-    await deps.db.from("waitlist").update({ sms_opt_out: false, sms_opt_out_at: null, is_active: true }).in("id", ids);
-    return { reply: startSms(clinicName) };
+    // START lifts the opt-out on every row of the number (the patient's own choice). It only switches a row
+    // back on if the 30-day scrub has not emptied it: a scrubbed row has no name or email left, so that
+    // person signs up again instead.
+    await deps.db.from("waitlist").update({ sms_opt_out: false, sms_opt_out_at: null }).in("id", ids);
+    const reactivate = patients.filter((p) => !p.scrubbed_at).map((p) => p.id);
+    if (reactivate.length > 0) await deps.db.from("waitlist").update({ is_active: true }).in("id", reactivate);
+    return { reply: reactivate.length > 0 ? startSms(clinicName) : startScrubbedSms(clinicName) };
   }
 
   if (kind === "yes" || kind === "no") {

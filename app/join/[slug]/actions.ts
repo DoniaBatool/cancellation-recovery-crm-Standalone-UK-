@@ -5,6 +5,7 @@ import type { FormState } from "@/lib/form-state";
 import { RATE_LIMITS } from "@/lib/rate-limit";
 import { isIpRateLimited } from "@/lib/rate-limit-request";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { inheritedOptOut, phoneKey } from "@/lib/sms-suppression";
 import { JOIN_ADDED_BY, joinSourceFrom, planOptIn } from "@/lib/waitlist-optin";
 import { fieldErrors, formDataToObject, publicJoinSchema } from "@/lib/validation";
 
@@ -45,11 +46,13 @@ export async function joinClinicWaitlist(slug: string, src: string | undefined, 
 
   // Two simple lookups (instead of one OR filter) so odd characters can't break the query.
   const [byPhone, byEmail] = await Promise.all([
-    admin.from("waitlist").select("id, email, phone, sms_opt_out").eq("clinic_id", clinic.id).eq("phone", v.phone),
-    admin.from("waitlist").select("id, email, phone, sms_opt_out").eq("clinic_id", clinic.id).eq("email", v.email),
+    admin.from("waitlist").select("id, email, phone, sms_opt_out, sms_opt_out_at, scrubbed_at").eq("clinic_id", clinic.id).eq("phone", v.phone),
+    admin.from("waitlist").select("id, email, phone, sms_opt_out, sms_opt_out_at, scrubbed_at").eq("clinic_id", clinic.id).eq("email", v.email),
   ]);
   if (byPhone.error || byEmail.error) return { error: "Sorry, something went wrong. Please try again." };
-  const existing = [...(byPhone.data ?? []), ...(byEmail.data ?? [])];
+  const found = [...(byPhone.data ?? []), ...(byEmail.data ?? [])];
+  // A row the 30-day scrub emptied is never reused: the person gets a fresh row. It still counts for STOP.
+  const existing = found.filter((row) => !row.scrubbed_at);
 
   const fields = {
     patient_name: v.patient_name,
@@ -65,22 +68,24 @@ export async function joinClinicWaitlist(slug: string, src: string | undefined, 
   };
 
   const plan = planOptIn(existing, { phone: v.phone, email: v.email });
-  const { error } =
-    plan.action === "update"
-      ? await admin.from("waitlist").update(fields).eq("id", plan.id).eq("clinic_id", clinic.id)
-      : await admin.from("waitlist").insert({
-          ...fields,
-          clinic_id: clinic.id,
-          opt_in_source: joinSourceFrom(src),
-          added_by: JOIN_ADDED_BY,
-        });
-  if (error) return { error: "Sorry, something went wrong. Please try again." };
-
-  // This patient earlier replied STOP to a text. Ask what they want now (answerSmsPreference).
   if (plan.action === "update") {
+    const { error } = await admin.from("waitlist").update(fields).eq("id", plan.id).eq("clinic_id", clinic.id);
+    if (error) return { error: "Sorry, something went wrong. Please try again." };
+    // This patient earlier replied STOP to a text. Ask what they want now (answerSmsPreference).
     const matched = existing.find((row) => row.id === plan.id);
     if (matched?.sms_opt_out) return { message: "joined", askSmsPreference: { patientId: plan.id } };
+    return { message: "joined" };
   }
+
+  // New row. If this number opted out earlier (even on a row that was since scrubbed), the new row inherits it.
+  const inherited = inheritedOptOut(found, v.phone);
+  const { data: created, error } = await admin
+    .from("waitlist")
+    .insert({ ...fields, ...(inherited ?? {}), clinic_id: clinic.id, opt_in_source: joinSourceFrom(src), added_by: JOIN_ADDED_BY })
+    .select("id")
+    .single();
+  if (error) return { error: "Sorry, something went wrong. Please try again." };
+  if (inherited && created?.id) return { message: "joined", askSmsPreference: { patientId: created.id } };
 
   return { message: "joined" };
 }
@@ -111,7 +116,7 @@ export async function answerSmsPreference(slug: string, patientId: string, answe
 
   const { data: row } = await admin
     .from("waitlist")
-    .select("id, sms_opt_out")
+    .select("id, phone, sms_opt_out")
     .eq("id", patientId)
     .eq("clinic_id", clinic.id)
     .maybeSingle();
@@ -119,10 +124,16 @@ export async function answerSmsPreference(slug: string, patientId: string, answe
 
   if (answer === "no") return { ok: true, message: "No problem. We'll only email you." };
 
+  // STOP follows the number, so "yes" clears it on every opted-out row of this clinic with the same number
+  // (for example an older row that the 30-day scrub emptied). Otherwise that row would keep blocking texts.
+  const { data: optedOut, error: lookupError } = await admin.from("waitlist").select("id, phone").eq("clinic_id", clinic.id).eq("sms_opt_out", true);
+  if (lookupError) return fail;
+  const key = phoneKey(row.phone);
+  const ids = new Set([row.id, ...(optedOut ?? []).filter((r) => key !== null && phoneKey(r.phone) === key).map((r) => r.id)]);
   const { error } = await admin
     .from("waitlist")
     .update({ sms_opt_out: false, sms_opt_out_at: null })
-    .eq("id", row.id)
+    .in("id", [...ids])
     .eq("clinic_id", clinic.id);
   if (error) return fail;
   return { ok: true, message: "Thanks. We'll text you again. If texts don't arrive, reply START to the last message you received from us." };

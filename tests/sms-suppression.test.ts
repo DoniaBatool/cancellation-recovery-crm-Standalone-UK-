@@ -128,3 +128,47 @@ describe("START clears the flag for every row with that phone (the patient's own
     expect(w.tables.waitlist!.every((r) => r.sms_opt_out === true && r.sms_opt_out_at)).toBe(true);
   });
 });
+
+describe("after the 30-day scrub the number still blocks SMS", () => {
+  // What private.scrub_opted_out_waitlist() leaves behind: placeholder name, no email/notes, phone + flag + date kept.
+  const scrubbed = (id: string, over: Record<string, unknown> = {}) =>
+    stopped(id, { patient_name: "Opted out", email: null, notes: null, pms_patient_id: null, preferred_procedures: [], preferred_days: [], preferred_times: [], preferred_doctors: [], existing_patient: false, scrubbed_at: "2026-10-10T03:20:00.000Z", ...over });
+
+  it("offer path: a new row with the same number gets no SMS", async () => {
+    const w = makeWorld({ channels: ["email", "sms"], patients: [scrubbed("old"), patientRow("new", { phone: "07700 900001", sms_opt_out: false })] });
+    await startOffers(w.deps, "p1");
+    expect(w.sentOffers).toHaveLength(1);
+    expect(w.sentOffers[0]!.patient.id).toBe("new");
+    expect(w.sentOffers[0]!.channels).toEqual(["email"]);
+  });
+
+  it("lib/sms.ts send guard refuses the number and writes no message row", async () => {
+    const config = { accountSid: "AC1", authToken: "t", messagingServiceSid: null, smsFrom: "+447000000000", whatsappFrom: null };
+    const store = memoryDb({ waitlist: [scrubbed("old")] });
+    const create = vi.fn().mockResolvedValue({ sid: "SM1" });
+    expect(await createSmsSender(config, store.db, "https://a.co", { messages: { create } }).send({ to: P, body: "hi", clinicId: "c1" })).toBe(false);
+    expect(create).not.toHaveBeenCalled();
+    expect(store.tables.messages ?? []).toHaveLength(0);
+  });
+
+  it("inheritedOptOut still hands the original flag and date to a new row", () => {
+    expect(inheritedOptOut([scrubbed("old")], "07700 900001")).toEqual({ sms_opt_out: true, sms_opt_out_at: STOPPED_AT });
+  });
+
+  it("START lifts the opt-out on the scrubbed row but does NOT switch it back on, and tells the patient to sign up again", async () => {
+    const w = makeWorld({ patients: [scrubbed("old")] });
+    const { reply } = await handleInboundSms(w.deps, { from: P, body: "START", messageSid: "SMS3" });
+    expect(w.tables.waitlist!.find((r) => r.id === "old")).toMatchObject({ sms_opt_out: false, sms_opt_out_at: null, is_active: false, patient_name: "Opted out" });
+    expect(reply).toMatch(/sign up again/);
+    expect(reply).not.toMatch(/back on the list/);
+  });
+
+  it("START with one scrubbed and one ordinary row switches only the ordinary row back on", async () => {
+    const w = makeWorld({ patients: [scrubbed("old"), stopped("kept")] });
+    const { reply } = await handleInboundSms(w.deps, { from: P, body: "START", messageSid: "SMS4" });
+    const rows = w.tables.waitlist!;
+    expect(rows.find((r) => r.id === "old")).toMatchObject({ sms_opt_out: false, is_active: false });
+    expect(rows.find((r) => r.id === "kept")).toMatchObject({ sms_opt_out: false, is_active: true });
+    expect(reply).toMatch(/back on the list/);
+  });
+});

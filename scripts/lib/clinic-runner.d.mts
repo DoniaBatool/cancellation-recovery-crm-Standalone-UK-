@@ -12,6 +12,7 @@ export type Deps = {
   log: (msg: string) => void;
   generate?: (bytes: number) => string;
 };
+export function verifyJobsScheduled(deps: Deps, mgmt: SupabaseMgmt, ref: string, label: string, names: string[]): Promise<string[]>;
 export function applyMigrations(deps: Deps, mgmt: SupabaseMgmt, ref: string): Promise<string[]>;
 export function runClinicSetup(
   deps: Deps,

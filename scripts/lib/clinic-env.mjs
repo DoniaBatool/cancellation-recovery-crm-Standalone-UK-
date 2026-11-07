@@ -51,6 +51,8 @@ export const CRON_JOBS = [
   { name: "health-check", schedule: "0 * * * *", path: "/api/cron/health-check", sql: null, needs: null },
   // 30-day personal-data purge (DPA 8.1), daily 03:15 UTC. Function: supabase/migrations/...0008_*.sql
   { name: "chairfill-purge", schedule: "15 3 * * *", path: null, sql: "select private.purge_closed_job_personal_data()", needs: null },
+  // 30-day scrub of opted-out waitlist rows (DPA 8.1), daily 03:20 UTC. Function: ...0009_*.sql
+  { name: "chairfill-waitlist-scrub", schedule: "20 3 * * *", path: null, sql: "select private.scrub_opted_out_waitlist()", needs: null },
 ];
 
 // ---------------------------------------------------------------------------

@@ -71,4 +71,6 @@ export const bookedSms = (i: { clinicName: string; clinicPhone: string | null; s
   toGsm7(`Confirmed: ${slotText(i.slotDatetime, i.timeZone)} at ${i.clinicName}.${i.clinicPhone ? ` Can't make it? Call ${i.clinicPhone}.` : ""}`);
 export const stopSms = (clinicName: string) => toGsm7(`You won't get more texts from ${clinicName}. Reply START to rejoin.`);
 export const startSms = (clinicName: string) => toGsm7(`You're back on the list for ${clinicName}. Reply STOP to opt out.`);
+/** START from a number whose only rows were emptied by the 30-day scrub: texts are allowed again, but there is no list entry to switch on. */
+export const startScrubbedSms = (clinicName: string) => toGsm7(`Texts from ${clinicName} are back on. Your details were removed after you opted out, so please sign up again on the practice's link to rejoin the list.`);
 export const unknownReplySms = () => "Thanks, the practice will get back to you.";

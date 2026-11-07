@@ -20,12 +20,13 @@ CRON_SECRET=
 DENTALLY_WEBHOOK_SECRET=
 `;
 
-function world(opts: { appliedMigrations?: Array<{ version: string; name: string }>; vercel?: boolean; fileText?: string } = {}) {
+function world(opts: { appliedMigrations?: Array<{ version: string; name: string }>; vercel?: boolean; fileText?: string; pgCronBroken?: boolean } = {}) {
   const db = memoryDb();
   const calls: string[] = [];
   const sqlRuns: string[] = [];
   const written: Record<string, string> = {};
   const logs: string[] = [];
+  const scheduledJobs = new Set<string>();
   const pushed: Array<{ key: string; value: string; type: string }> = [];
   let invites = 0;
   const migrationSql: Record<string, string> = {
@@ -68,7 +69,11 @@ function world(opts: { appliedMigrations?: Array<{ version: string; name: string
         if (sql.includes("from supabase_migrations.schema_migrations order by")) return recorded;
         const m = sql.match(/values \('(\d+)', '([^']+)'\)/);
         if (m) recorded.push({ version: m[1]!, name: m[2]! });
-        if (sql.includes("cron.schedule")) calls.push("cron");
+        if (sql.includes("cron.schedule")) {
+          calls.push("cron");
+          for (const m of sql.matchAll(/cron\.schedule\('([^']+)'/g)) scheduledJobs.add(m[1]!);
+        }
+        if (sql.includes("from cron.job where jobname in")) return [...scheduledJobs].filter((n) => !opts.pgCronBroken).map((jobname) => ({ jobname }));
         return [];
       },
       patchAuthConfig: async () => {
@@ -231,8 +236,24 @@ describe("runMigrateAll", () => {
     const cron = w.sqlRuns.filter((q) => q.includes("cron.schedule"));
     expect(cron).toHaveLength(1);
     expect(cron[0]).toContain("cron.schedule('chairfill-purge', '15 3 * * *'");
+    expect(cron[0]).toContain("cron.schedule('chairfill-waitlist-scrub', '20 3 * * *'");
     expect(cron[0]).not.toContain("vault");
-    expect(w.logs.join("\n")).toContain("database jobs scheduled: chairfill-purge");
+    expect(w.logs.join("\n")).toContain("database jobs: chairfill-purge, chairfill-waitlist-scrub");
+    expect(w.logs.join("\n")).not.toContain("NOT scheduled");
+  });
+
+  it("warns loudly when a database job is not really scheduled (pg_cron missing)", async () => {
+    const w = world({ pgCronBroken: true });
+    w.deps.files.readFile = async () => "CLINIC_SLUG=a\nSUPABASE_PROJECT_REF=aaaaaaaaaaaaaaaaaaaa\nSUPABASE_ACCESS_TOKEN=sbp_ok\n";
+    const r = await runMigrateAll(w.deps, ["a"]);
+    expect(w.logs.join("\n")).toContain("cron job(s) NOT scheduled: chairfill-purge, chairfill-waitlist-scrub");
+    expect(r.results[0]).toMatchObject({ missingJobs: ["chairfill-purge", "chairfill-waitlist-scrub"] });
+  });
+
+  it("clinic:setup also warns when its cron jobs are not scheduled", async () => {
+    const w = world({ pgCronBroken: true });
+    await runClinicSetup(w.deps, "clinics/smile-dental.env", {});
+    expect(w.logs.join("\n")).toContain("cron job(s) NOT scheduled: offers-tick");
   });
 
   it("handles no clinic files", async () => {

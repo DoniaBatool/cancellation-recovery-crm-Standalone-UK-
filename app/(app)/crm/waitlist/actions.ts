@@ -2,13 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 import type { FormState } from "@/lib/form-state";
-import { inheritedOptOut, STAFF_OPTED_OUT_NOTE } from "@/lib/sms-suppression";
+import { inheritedOptOut, SCRUBBED_PATIENT_NOTE, STAFF_OPTED_OUT_NOTE } from "@/lib/sms-suppression";
 import { getStaffContext, SIGN_IN_AGAIN } from "@/lib/staff-session";
 import { fieldErrors, formDataToObject, waitlistPatientFormSchema } from "@/lib/validation";
 import { z } from "zod";
 
 // Waitlist actions. Source: SYSTEM_BUILD_GUIDE.md §8.3. They use the session (RLS) client:
 // the database policies already limit every row to the signed-in user's clinic.
+
+type StaffDb = NonNullable<Awaited<ReturnType<typeof getStaffContext>>>["supabase"];
+
+/** True when the 30-day scrub already emptied this row. null = could not check. */
+async function isScrubbedRow(db: StaffDb, clinicId: string, id: string): Promise<boolean | null> {
+  const { data, error } = await db.from("waitlist").select("scrubbed_at").eq("id", id).eq("clinic_id", clinicId).maybeSingle();
+  if (error) return null;
+  return Boolean(data?.scrubbed_at);
+}
 
 export async function saveWaitlistPatient(_prev: FormState, formData: FormData): Promise<FormState> {
   const ctx = await getStaffContext();
@@ -46,11 +55,16 @@ export async function saveWaitlistPatient(_prev: FormState, formData: FormData):
   }
 
   if (id) {
+    // A scrubbed row has no name or email any more and must stay empty: staff add the person as a new row.
+    const scrubbed = await isScrubbedRow(ctx.supabase, ctx.clinic.id, id);
+    if (scrubbed === null) return { error: "Could not save the patient. Please try again." };
+    if (scrubbed) return { error: SCRUBBED_PATIENT_NOTE };
     const { data, error } = await ctx.supabase
       .from("waitlist")
       .update({ ...fields, ...(inherited ?? {}) })
       .eq("id", id)
       .eq("clinic_id", ctx.clinic.id)
+      .is("scrubbed_at", null)
       .select("id");
     if (error) return { error: "Could not save the patient. Please try again." };
     if (!data?.length) return { error: "That patient no longer exists." };
@@ -79,11 +93,16 @@ export async function setWaitlistActive(id: string, active: boolean): Promise<Fo
   const parsed = toggleSchema.safeParse({ id, active });
   if (!parsed.success) return { error: "Something went wrong. Please refresh and try again." };
 
-  const { error } = await ctx.supabase
-    .from("waitlist")
-    .update({ is_active: parsed.data.active })
-    .eq("id", parsed.data.id)
-    .eq("clinic_id", ctx.clinic.id);
+  // Switching ON a row the 30-day scrub already emptied is refused: it has no name or email left.
+  if (parsed.data.active) {
+    const scrubbed = await isScrubbedRow(ctx.supabase, ctx.clinic.id, parsed.data.id);
+    if (scrubbed === null) return { error: "Could not update the patient." };
+    if (scrubbed) return { error: SCRUBBED_PATIENT_NOTE };
+  }
+
+  let update = ctx.supabase.from("waitlist").update({ is_active: parsed.data.active }).eq("id", parsed.data.id).eq("clinic_id", ctx.clinic.id);
+  if (parsed.data.active) update = update.is("scrubbed_at", null); // also guards a scrub that ran a moment ago
+  const { error } = await update;
   if (error) return { error: "Could not update the patient." };
 
   revalidatePath("/crm/waitlist");

@@ -551,4 +551,94 @@ END $$;
 
 ROLLBACK;
 
+-- ---------------------------------------------------------------------------
+-- 30-day scrub of opted-out waitlist rows (migration 0009). Rolled-back transaction.
+-- ---------------------------------------------------------------------------
+BEGIN;
+
+INSERT INTO public.waitlist (id, clinic_id, patient_name, email, phone, notes, pms_patient_id, preferred_procedures, preferred_days, preferred_times, preferred_doctors, existing_patient, sms_opt_out, sms_opt_out_at, is_active) VALUES
+  ('b0000001-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', 'Old Alice', 'alice@x.test', '+447700900801', 'prefers Dr Khan', 'PMS-1', '{"filling"}', '{"Monday"}', '{"morning"}', '{"Dr Khan"}', TRUE, TRUE, now() - interval '40 days', FALSE),
+  ('b0000002-0000-4000-8000-000000000002', 'aaaaaaaa-0000-4000-8000-000000000001', 'Young Bob', 'bob@x.test', '+447700900802', 'a note', 'PMS-2', '{"filling"}', '{"Monday"}', '{"morning"}', '{"Dr Khan"}', TRUE, TRUE, now() - interval '5 days', FALSE),
+  ('b0000003-0000-4000-8000-000000000003', 'aaaaaaaa-0000-4000-8000-000000000001', 'Back Carol', 'carol@x.test', '+447700900803', 'a note', 'PMS-3', '{"filling"}', '{"Monday"}', '{"morning"}', '{"Dr Khan"}', TRUE, FALSE, NULL, TRUE),
+  ('b0000004-0000-4000-8000-000000000004', 'aaaaaaaa-0000-4000-8000-000000000001', 'No Phone Dan', 'dan@x.test', NULL, 'a note', NULL, '{}', '{}', '{}', '{}', FALSE, TRUE, now() - interval '40 days', FALSE),
+  -- opted out long ago, but ACTIVE again and reachable by email (signed up again / staff re-activated): must stay untouched
+  ('b0000005-0000-4000-8000-000000000005', 'aaaaaaaa-0000-4000-8000-000000000001', 'Active Eve', 'eve@x.test', '+447700900805', 'wants email', 'PMS-5', '{"filling"}', '{"Monday"}', '{"morning"}', '{"Dr Khan"}', TRUE, TRUE, now() - interval '40 days', TRUE);
+
+CREATE TEMP TABLE wl_before AS SELECT id, md5(w::text) AS h FROM public.waitlist w;
+CREATE TEMP TABLE wl_count AS SELECT count(*) AS n FROM public.waitlist;
+
+DO $$
+DECLARE r RECORD;
+BEGIN
+  PERFORM test.act_as('11111111-1111-4111-8111-111111111111', 'authenticated');
+  BEGIN
+    PERFORM private.scrub_opted_out_waitlist();
+    RAISE EXCEPTION 'SCRUB FAIL: authenticated user could call the scrub';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  RESET ROLE;
+  PERFORM test.act_as(NULL, 'anon');
+  BEGIN
+    PERFORM private.scrub_opted_out_waitlist();
+    RAISE EXCEPTION 'SCRUB FAIL: anon could call the scrub';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  RESET ROLE;
+
+  SELECT * INTO r FROM private.scrub_opted_out_waitlist();
+  PERFORM test.assert_eq('exactly one row scrubbed (opted out 40 days ago, inactive, has a phone)', r.rows_scrubbed, 1);
+END $$;
+
+DO $$
+DECLARE r RECORD;
+BEGIN
+  -- Scrubbed row: personal data gone, suppression record intact.
+  PERFORM test.assert_eq('old opted-out row: name placeholder, email/notes/pms id NULL, preferences empty, existing_patient false, scrubbed_at set',
+    (SELECT count(*) FROM public.waitlist WHERE id = 'b0000001-0000-4000-8000-000000000001' AND patient_name = 'Opted out' AND email IS NULL AND notes IS NULL AND pms_patient_id IS NULL
+       AND preferred_procedures = '{}' AND preferred_days = '{}' AND preferred_times = '{}' AND preferred_doctors = '{}' AND existing_patient = FALSE AND scrubbed_at IS NOT NULL), 1);
+  PERFORM test.assert_eq('old opted-out row: phone, sms_opt_out, sms_opt_out_at, clinic_id and id unchanged',
+    (SELECT count(*) FROM public.waitlist WHERE id = 'b0000001-0000-4000-8000-000000000001' AND phone = '+447700900801' AND sms_opt_out = TRUE AND sms_opt_out_at < now() - interval '39 days' AND sms_opt_out_at > now() - interval '41 days' AND clinic_id = 'aaaaaaaa-0000-4000-8000-000000000001'), 1);
+  -- Untouched rows (byte-identical): younger than 30 days, started again (flag false), no phone.
+  PERFORM test.assert_eq('young opted-out row untouched', (SELECT count(*) FROM wl_before b JOIN public.waitlist w ON w.id = b.id WHERE b.id = 'b0000002-0000-4000-8000-000000000002' AND md5(w::text) <> b.h), 0);
+  PERFORM test.assert_eq('row with sms_opt_out = false is never scrubbed', (SELECT count(*) FROM wl_before b JOIN public.waitlist w ON w.id = b.id WHERE b.id = 'b0000003-0000-4000-8000-000000000003' AND md5(w::text) <> b.h), 0);
+  PERFORM test.assert_eq('opted-out row without a phone is skipped', (SELECT count(*) FROM wl_before b JOIN public.waitlist w ON w.id = b.id WHERE b.id = 'b0000004-0000-4000-8000-000000000004' AND md5(w::text) <> b.h), 0);
+  PERFORM test.assert_eq('opted-out row that is ACTIVE with an email is never scrubbed', (SELECT count(*) FROM wl_before b JOIN public.waitlist w ON w.id = b.id WHERE b.id = 'b0000005-0000-4000-8000-000000000005' AND md5(w::text) <> b.h), 0);
+  PERFORM test.assert_eq('active row keeps name, email and scrubbed_at stays NULL', (SELECT count(*) FROM public.waitlist WHERE id = 'b0000005-0000-4000-8000-000000000005' AND patient_name = 'Active Eve' AND email = 'eve@x.test' AND scrubbed_at IS NULL), 1);
+  PERFORM test.assert_eq('no row deleted', (SELECT count(*) FROM public.waitlist), (SELECT n FROM wl_count));
+  PERFORM test.assert_eq('every other row is byte-identical', (SELECT count(*) FROM wl_before b JOIN public.waitlist w ON w.id = b.id WHERE b.id <> 'b0000001-0000-4000-8000-000000000001' AND md5(w::text) <> b.h), 0);
+
+  -- Idempotent.
+  SELECT * INTO r FROM private.scrub_opted_out_waitlist();
+  PERFORM test.assert_eq('second run scrubs 0 rows', r.rows_scrubbed, 0);
+  PERFORM test.assert_eq('scrubbed row is not touched again', (SELECT count(*) FROM public.waitlist WHERE id = 'b0000001-0000-4000-8000-000000000001' AND scrubbed_at > now() - interval '1 minute'), 1);
+  PERFORM test.assert_eq('purge_log counts the scrub (1 then 0), one row per run', (SELECT count(*) FROM public.purge_log WHERE waitlist_scrubbed = 1), 1);
+  PERFORM test.assert_eq('purge_log has two scrub rows', (SELECT count(*) FROM public.purge_log WHERE events_scrubbed = 0 AND messages_scrubbed = 0), 2);
+END $$;
+
+-- A scrubbed row cannot be switched back on, by anyone (backstop behind the CRM message).
+DO $$
+BEGIN
+  BEGIN
+    UPDATE public.waitlist SET is_active = TRUE WHERE id = 'b0000001-0000-4000-8000-000000000001';
+    RAISE EXCEPTION 'SCRUB FAIL: a scrubbed row was switched back on';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  PERFORM test.assert_eq('scrubbed row stays inactive', (SELECT count(*) FROM public.waitlist WHERE id = 'b0000001-0000-4000-8000-000000000001' AND is_active = FALSE), 1);
+  -- as a signed-in staff user (RLS client), too
+  PERFORM test.act_as('11111111-1111-4111-8111-111111111111', 'authenticated');
+  BEGIN
+    UPDATE public.waitlist SET is_active = TRUE WHERE id = 'b0000001-0000-4000-8000-000000000001';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  RESET ROLE;
+  PERFORM test.assert_eq('scrubbed row still inactive after the staff attempt', (SELECT count(*) FROM public.waitlist WHERE id = 'b0000001-0000-4000-8000-000000000001' AND is_active = FALSE), 1);
+  -- an ordinary inactive opted-out row (not scrubbed) can still be switched on, and START still clears the flag on a scrubbed row
+  UPDATE public.waitlist SET is_active = FALSE WHERE id = 'b0000002-0000-4000-8000-000000000002';
+  UPDATE public.waitlist SET is_active = TRUE WHERE id = 'b0000002-0000-4000-8000-000000000002';
+  UPDATE public.waitlist SET sms_opt_out = FALSE, sms_opt_out_at = NULL WHERE id = 'b0000001-0000-4000-8000-000000000001';
+  PERFORM test.assert_eq('START-style update on a scrubbed row is allowed (is_active untouched)', (SELECT count(*) FROM public.waitlist WHERE id = 'b0000001-0000-4000-8000-000000000001' AND sms_opt_out = FALSE AND is_active = FALSE), 1);
+END $$;
+
+ROLLBACK;
+
 SELECT 'RLS_ALL_OK' AS result;

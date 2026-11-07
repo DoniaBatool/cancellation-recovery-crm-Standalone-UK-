@@ -6,11 +6,13 @@ type Row = Record<string, unknown>;
 const state: { clinics: Row[]; waitlist: Row[]; limited: boolean } = { clinics: [], waitlist: [], limited: false };
 
 function table(name: "clinics" | "waitlist") {
-  const filters: Array<[string, unknown]> = [];
+  const filters: Array<(r: Row) => boolean> = [];
   let mode: "select" | "update" | "insert" = "select";
   let patch: Row = {};
+  let created: Row | null = null;
   const run = () => {
-    const rows = state[name].filter((r) => filters.every(([k, v]) => r[k] === v));
+    if (mode === "insert") return { data: created ? [created] : [], error: null };
+    const rows = state[name].filter((r) => filters.every((f) => f(r)));
     if (mode === "update") {
       rows.forEach((r) => Object.assign(r, patch));
       return { data: null, error: null };
@@ -19,11 +21,18 @@ function table(name: "clinics" | "waitlist") {
   };
   const q: Record<string, unknown> = {
     select: () => q,
-    eq: (k: string, v: unknown) => (filters.push([k, v]), q),
+    eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), q),
+    in: (k: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[k])), q),
     update: (p: Row) => ((mode = "update"), (patch = p), q),
     insert: (p: Row) => {
-      state[name].push({ id: `00000000-0000-4000-8000-${String(state[name].length + 1).padStart(12, "0")}`, sms_opt_out: false, ...p });
-      return Promise.resolve({ data: null, error: null });
+      mode = "insert";
+      created = { id: `00000000-0000-4000-8000-${String(state[name].length + 1).padStart(12, "0")}`, sms_opt_out: false, ...p };
+      state[name].push(created);
+      return q;
+    },
+    single: () => {
+      const { data } = run();
+      return Promise.resolve({ data: (data as Row[])[0] ?? null, error: null });
     },
     maybeSingle: () => {
       const { data } = run();
@@ -122,5 +131,36 @@ describe("answerSmsPreference", () => {
     const r = await answerSmsPreference("smile", PATIENT, "yes");
     expect(r.ok).toBe(false);
     expect(state.waitlist[0]!.sms_opt_out).toBe(true);
+  });
+});
+
+describe("after the 30-day scrub", () => {
+  const SCRUBBED = { id: PATIENT, clinic_id: CLINIC, patient_name: "Opted out", email: null, phone: "+447700900001", sms_opt_out: true, sms_opt_out_at: "2026-09-01T10:00:00.000Z", is_active: false, scrubbed_at: "2026-10-10T03:20:00.000Z" };
+
+  it("a new sign-up with the same number gets a NEW row that inherits the opt-out, and the scrubbed row stays empty", async () => {
+    state.waitlist = [{ ...SCRUBBED }];
+    const r = await joinClinicWaitlist("smile", undefined, null, signupForm());
+    expect(r?.message).toBe("joined");
+    expect(state.waitlist).toHaveLength(2);
+    expect(state.waitlist[0]).toMatchObject({ patient_name: "Opted out", email: null, is_active: false, scrubbed_at: "2026-10-10T03:20:00.000Z" });
+    const fresh = state.waitlist[1]!;
+    expect(fresh).toMatchObject({ patient_name: "Ann Patient", email: "ann@example.com", is_active: true, sms_opt_out: true, sms_opt_out_at: "2026-09-01T10:00:00.000Z" });
+    expect(r?.askSmsPreference).toEqual({ patientId: fresh.id });
+  });
+
+  it("answering yes clears the opt-out on the new row AND on the scrubbed row (STOP follows the number)", async () => {
+    state.waitlist = [{ ...SCRUBBED }];
+    const r = await joinClinicWaitlist("smile", undefined, null, signupForm());
+    const answer = await answerSmsPreference("smile", r!.askSmsPreference!.patientId, "yes");
+    expect(answer.ok).toBe(true);
+    expect(state.waitlist.every((row) => row.sms_opt_out === false && row.sms_opt_out_at === null)).toBe(true);
+    expect(state.waitlist[0]!.is_active).toBe(false); // the scrubbed row is not switched back on
+  });
+
+  it("answering no leaves both rows opted out", async () => {
+    state.waitlist = [{ ...SCRUBBED }];
+    const r = await joinClinicWaitlist("smile", undefined, null, signupForm());
+    await answerSmsPreference("smile", r!.askSmsPreference!.patientId, "no");
+    expect(state.waitlist.every((row) => row.sms_opt_out === true)).toBe(true);
   });
 });

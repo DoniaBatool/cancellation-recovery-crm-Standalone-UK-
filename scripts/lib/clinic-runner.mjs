@@ -35,6 +35,22 @@ import {
 
 const say = (deps, msg) => deps.log(msg);
 
+/**
+ * Warn when a cron job is not really scheduled (pg_cron not enabled, or the SQL failed quietly).
+ * Returns the missing names. A missing purge job is a compliance gap, so this is printed loudly.
+ */
+export async function verifyJobsScheduled(deps, mgmt, ref, label, names) {
+  const list = names.map((n) => `'${n}'`).join(", ");
+  const rows = await mgmt.query(ref, `select jobname from cron.job where jobname in (${list});`);
+  if (!Array.isArray(rows)) return [];
+  const found = new Set(rows.map((r) => r.jobname));
+  const missing = names.filter((n) => !found.has(n));
+  if (missing.length) {
+    say(deps, `⚠ ${label}: cron job(s) NOT scheduled: ${missing.join(", ")}. Enable pg_cron (Supabase > Database > Extensions) and run again.`);
+  }
+  return missing;
+}
+
 /** Step 2 only. Used by setup and by migrate-all. Returns the names of migrations applied now. */
 export async function applyMigrations(deps, mgmt, ref) {
   const files = await deps.files.listMigrationFiles();
@@ -122,7 +138,9 @@ export async function runClinicSetup(deps, filePath, { dryRun = false } = {}) {
   say(deps, "8/9 Scheduling the cron jobs (pg_cron)…");
   await mgmt.query(ref, cronSql(v));
   const jobs = cronJobsFor(v);
-  say(deps, `    scheduled: ${jobs.filter((j) => j.enabled).map((j) => j.name).join(", ")}`);
+  const scheduled = jobs.filter((j) => j.enabled).map((j) => j.name);
+  say(deps, `    scheduled: ${scheduled.join(", ")}`);
+  await verifyJobsScheduled(deps, mgmt, ref, "setup", scheduled);
   const skipped = jobs.filter((j) => !j.enabled).map((j) => j.name);
   if (skipped.length) say(deps, `    not scheduled (not configured yet): ${skipped.join(", ")}`);
 
@@ -218,8 +236,9 @@ export async function runMigrateAll(deps, filePaths, { dryRun = false } = {}) {
       const applied = await applyMigrations(deps, mgmt, v.SUPABASE_PROJECT_REF);
       // The in-database cron jobs (chairfill-purge) are (re)scheduled by name, so this is safe on every run.
       await mgmt.query(v.SUPABASE_PROJECT_REF, sqlJobsSql());
-      say(deps, `✓ ${label}: ${applied.length ? `applied ${applied.join(", ")}` : "already up to date"}; database jobs scheduled: ${sqlJobNames().join(", ")}`);
-      results.push({ clinic: label, ok: true, applied });
+      const missingJobs = await verifyJobsScheduled(deps, mgmt, v.SUPABASE_PROJECT_REF, label, sqlJobNames());
+      say(deps, `✓ ${label}: ${applied.length ? `applied ${applied.join(", ")}` : "already up to date"}; database jobs: ${sqlJobNames().join(", ")}`);
+      results.push({ clinic: label, ok: true, applied, ...(missingJobs.length ? { missingJobs } : {}) });
     } catch (error) {
       say(deps, `✗ ${label}: ${error instanceof Error ? error.message : String(error)}`);
       results.push({ clinic: label, ok: false });

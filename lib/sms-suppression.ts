@@ -46,4 +46,6 @@ export async function loadOptedOutPhones(db: Db, clinicId: string): Promise<Set<
   return set;
 }
 
+/** Shown to staff when they try to switch on or edit a row that the 30-day scrub already emptied. */
+export const SCRUBBED_PATIENT_NOTE = "This patient's data was removed after they opted out. Ask them to sign up again.";
 export const STAFF_OPTED_OUT_NOTE = "This patient opted out earlier. They will not get SMS until they reply START.";

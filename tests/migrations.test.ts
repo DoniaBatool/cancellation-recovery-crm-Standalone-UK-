@@ -12,6 +12,7 @@ const rateLimitSql = readFileSync(path.join(root, "supabase/migrations/202701010
 const sourceSql = readFileSync(path.join(root, "supabase/migrations/20270101000005_source_qr_privacy_notice.sql"), "utf8");
 const reportsSql = readFileSync(path.join(root, "supabase/migrations/20270101000006_monthly_reports.sql"), "utf8");
 const auditSql = readFileSync(path.join(root, "supabase/migrations/20270101000007_approval_audit_trail.sql"), "utf8");
+const scrubSql = readFileSync(path.join(root, "supabase/migrations/20270101000009_scrub_opted_out_waitlist.sql"), "utf8");
 const purgeSql = readFileSync(path.join(root, "supabase/migrations/20270101000008_purge_closed_job_personal_data.sql"), "utf8");
 const sha256 = (t: string) => createHash("sha256").update(t).digest("hex");
 
@@ -219,5 +220,49 @@ describe("schema sanity", () => {
     expect(sql).toContain("REVOKE ALL ON FUNCTION private.purge_closed_job_personal_data(INTERVAL) FROM PUBLIC, anon, authenticated");
     expect(sql).not.toMatch(/GRANT /);
     expect(sql).toContain("INSERT INTO public.purge_log");
+  });
+
+  it("0009 waitlist scrub: only opted-out rows, scrubs and never deletes, keeps the suppression record", () => {
+    const sql = code(scrubSql);
+    expect("20270101000008_purge_closed_job_personal_data.sql" < "20270101000009_scrub_opted_out_waitlist.sql").toBe(true);
+    expect(sql).toContain("ADD COLUMN scrubbed_at TIMESTAMPTZ");
+    expect(sql).toContain("ADD COLUMN waitlist_scrubbed INT NOT NULL DEFAULT 0");
+    expect(sql).not.toMatch(/DELETE\s/i);
+    expect(sql).not.toMatch(/TRUNCATE/i);
+    const update = sql.slice(sql.indexOf("UPDATE public.waitlist"), sql.indexOf("GET DIAGNOSTICS"));
+    expect(update).toContain("patient_name = 'Opted out'");
+    for (const col of ["email", "notes", "pms_patient_id"]) expect(update).toContain(`${col} = NULL`);
+    // The suppression record must never be written by the scrub.
+    const set = update.slice(update.indexOf("SET"), update.indexOf("WHERE"));
+    for (const col of ["phone", "sms_opt_out", "sms_opt_out_at", "clinic_id", "id "]) expect(set).not.toMatch(new RegExp(`\\b${col.trim()}\\s*=`));
+    // Scope: opted out, 30 days after the opt-out date, once only.
+    expect(update).toContain("w.sms_opt_out = TRUE");
+    expect(update).toContain("w.sms_opt_out_at < cutoff");
+    expect(update).toContain("w.scrubbed_at IS NULL");
+    // An active row (signed up again for email, or re-activated by staff) is still wanted: never scrubbed.
+    expect(update).toContain("w.is_active = FALSE");
+    expect(sql).toContain("INTERVAL DEFAULT INTERVAL '30 days'");
+  });
+
+  it("0009 waitlist scrub: function is private, security definer and locked down", () => {
+    const sql = code(scrubSql);
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION private.scrub_opted_out_waitlist(retention INTERVAL DEFAULT INTERVAL '30 days')");
+    expect(sql).toContain("SECURITY DEFINER");
+    expect(sql).toContain("SET search_path = public, pg_temp");
+    expect(sql).toContain("REVOKE ALL ON FUNCTION private.scrub_opted_out_waitlist(INTERVAL) FROM PUBLIC, anon, authenticated");
+    expect(sql).not.toMatch(/GRANT /);
+    expect(sql).toContain("INSERT INTO public.purge_log");
+  });
+
+  it("0009 waitlist scrub: a scrubbed row cannot be switched back on (trigger backstop)", () => {
+    const sql = code(scrubSql);
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION private.block_scrubbed_waitlist_reactivation()");
+    expect(sql).toContain("OLD.scrubbed_at IS NOT NULL AND NEW.is_active = TRUE AND OLD.is_active = FALSE");
+    expect(sql).toContain("BEFORE UPDATE OF is_active ON public.waitlist");
+    expect(sql).toContain("REVOKE ALL ON FUNCTION private.block_scrubbed_waitlist_reactivation() FROM PUBLIC, anon, authenticated");
+  });
+
+  it("no code path other than the scrub function blanks a waitlist phone", () => {
+    expect(code(purgeSql)).not.toMatch(/waitlist\s+SET/i);
   });
 });

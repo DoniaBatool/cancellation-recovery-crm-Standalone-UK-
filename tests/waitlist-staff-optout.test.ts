@@ -11,7 +11,7 @@ vi.mock("@/lib/staff-session", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
-import { saveWaitlistPatient } from "@/app/(app)/crm/waitlist/actions";
+import { saveWaitlistPatient, setWaitlistActive } from "@/app/(app)/crm/waitlist/actions";
 
 const EDIT_ID = "33333333-3333-4333-8333-333333333333";
 const STOPPED_AT = "2026-09-01T10:00:00.000Z";
@@ -92,5 +92,46 @@ describe("staff cannot clear the opt-out", () => {
     // lib/engine/inbound-sms.ts = the patient's own START reply
     expect(writers).toEqual(["app/join/[slug]/actions.ts", "lib/engine/inbound-sms.ts"]);
     expect(files.some((f) => f.includes(`${path.sep}crm${path.sep}`) && /sms_opt_out\s*:\s*false/.test(readFileSync(f, "utf8")))).toBe(false);
+  });
+});
+
+describe("staff re-adds a number whose old row was already scrubbed", () => {
+  it("the new row still inherits the opt-out and the original date", async () => {
+    setup([row("old", { patient_name: "Opted out", email: null, notes: null, sms_opt_out: true, sms_opt_out_at: STOPPED_AT, is_active: false, scrubbed_at: "2026-10-10T03:20:00.000Z" })]);
+    const result = await saveWaitlistPatient(null, form({ phone: "07700 900001" }));
+    expect(result).toMatchObject({ smsOptedOutNote: expect.any(String) });
+    expect(store.tables.waitlist!.find((r) => r.id !== "old")).toMatchObject({ sms_opt_out: true, sms_opt_out_at: STOPPED_AT });
+  });
+});
+
+describe("a scrubbed row cannot be brought back by staff", () => {
+  const SCRUBBED_AT = "2026-10-10T03:20:00.000Z";
+  const scrubbedRow = () => row(EDIT_ID, { patient_name: "Opted out", email: null, sms_opt_out: true, sms_opt_out_at: STOPPED_AT, is_active: false, scrubbed_at: SCRUBBED_AT });
+  const MESSAGE = "This patient's data was removed after they opted out. Ask them to sign up again.";
+
+  it("switching it to active is refused with a short message, and the row is unchanged", async () => {
+    setup([scrubbedRow()]);
+    expect(await setWaitlistActive(EDIT_ID, true)).toEqual({ error: MESSAGE });
+    expect(store.tables.waitlist![0]).toMatchObject({ is_active: false, patient_name: "Opted out", email: null });
+  });
+
+  it("editing it is refused too (it must stay empty)", async () => {
+    setup([scrubbedRow()]);
+    expect(await saveWaitlistPatient(null, form({ id: EDIT_ID, email: "ann@example.com", phone: "07700 900001" }))).toEqual({ error: MESSAGE });
+    expect(store.tables.waitlist![0]).toMatchObject({ patient_name: "Opted out", email: null });
+  });
+
+  it("pausing it is still allowed, and an ordinary inactive row can still be switched on", async () => {
+    setup([scrubbedRow(), row("33333333-3333-4333-8333-333333333334", { is_active: false, sms_opt_out: true, sms_opt_out_at: STOPPED_AT })]);
+    expect(await setWaitlistActive(EDIT_ID, false)).toEqual({ message: "Patient paused." });
+    expect(await setWaitlistActive("33333333-3333-4333-8333-333333333334", true)).toEqual({ message: "Patient is active." });
+    expect(store.tables.waitlist!.find((r) => r.id === "33333333-3333-4333-8333-333333333334")).toMatchObject({ is_active: true, sms_opt_out: true });
+  });
+
+  it("if the check cannot be made, nothing is switched on", async () => {
+    setup([scrubbedRow()]);
+    store.failOn("waitlist", "select");
+    expect(await setWaitlistActive(EDIT_ID, true)).toEqual({ error: "Could not update the patient." });
+    expect(store.tables.waitlist![0]!.is_active).toBe(false);
   });
 });

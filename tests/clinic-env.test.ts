@@ -230,7 +230,15 @@ describe("cron jobs", () => {
   it("includes the daily 03:15 UTC personal-data purge as an in-database job", () => {
     const purge = cronJobsFor(good).find((j) => j.name === "chairfill-purge");
     expect(purge).toMatchObject({ schedule: "15 3 * * *", sql: "select private.purge_closed_job_personal_data()", path: null, enabled: true });
-    expect(sqlJobNames()).toEqual(["chairfill-purge"]);
+    expect(sqlJobNames()).toEqual(["chairfill-purge", "chairfill-waitlist-scrub"]);
+  });
+
+  it("includes the daily 03:20 UTC scrub of opted-out waitlist rows as an in-database job", () => {
+    const scrub = cronJobsFor(good).find((j) => j.name === "chairfill-waitlist-scrub");
+    expect(scrub).toMatchObject({ schedule: "20 3 * * *", sql: "select private.scrub_opted_out_waitlist()", path: null, enabled: true });
+    const sql = cronSql({ ...good, CRON_SECRET: "c".repeat(40) });
+    expect(sql).toContain("cron.schedule('chairfill-waitlist-scrub', '20 3 * * *', $job$ select private.scrub_opted_out_waitlist() $job$);");
+    expect(sql.split("\n").find((l) => l.includes("chairfill-waitlist-scrub"))).not.toContain("net.http_get");
   });
 
   it("schedules the purge by name inside cronSql, with no HTTP call and no app secret", () => {
@@ -244,6 +252,7 @@ describe("cron jobs", () => {
     const sql = sqlJobsSql();
     expect(sql).toContain("create extension if not exists pg_cron");
     expect(sql).toContain("cron.schedule('chairfill-purge', '15 3 * * *'");
+    expect(sql).toContain("cron.schedule('chairfill-waitlist-scrub', '20 3 * * *'");
     expect(sql).not.toContain("vault");
     expect(sql).not.toContain("offers-tick");
   });
