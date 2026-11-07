@@ -13,6 +13,7 @@ Owner: Donia. Private. Not for a public repo.
 ## 2. Session routine
 
 1. **Start of every session:** load `/project-workflow`, read `PROGRESS.md`, then tell Donia in 3–4 lines where we are and what is next.
+   - Also remind Donia of the "Open items to remind Donia about" list in `PROGRESS.md` (one line each) until she confirms an item is done.
 2. **End of every step:** update `PROGRESS.md` before saying the step is done.
 3. **Never commit or push** unless Donia asks. Suggest a short commit message when a step finishes.
    - **Whenever you give Donia a `git commit` command, give the `git push` command together with it in the same message** (one copy-paste block). She runs both herself; you still never run them unless she asks.

@@ -27,6 +27,19 @@ Percent = finished phases out of the 7 in guide §19, and a phase counts as done
 2. Run each live check, fix what real services reveal (especially the Dentally field names), then tick Phases 3 to 6 in guide §22.
 3. Phase 7: shadow week at the first pilot clinic, then engine on and shadow off.
 
+## Open items to remind Donia about (added 2026-11-07)
+
+Claude: at the start of every session, after the 3–4 line status, remind Donia of these open items (one line each) until they are done. Tick or remove an item only when Donia confirms it is finished.
+
+| # | Open item | When / who |
+| --- | --- | --- |
+| 1 | Scrub for **Booked** and **Removed / no reply** waitlist patients is not built. Decide the retention days with the first real clinic, then build it like the opted-out scrub (scrub never delete, idempotent, cron, tests). First define what "inactive" means: the engine does not set `is_active = false` on booking or no reply. See `DATA_RETENTION_STATUS.md`. | First real clinic |
+| 2 | No cleanup exists for `recovery_pipeline.notes` (staff free text) and `rate_limits` (hashed IP rows). Both are OPEN in `DATA_RETENTION_STATUS.md`. | Before the DPA is signed |
+| 3 | Add one line to the DPA and the privacy notice: "For patients who opt out of SMS, we keep only the phone number, as a suppression record, so they are not texted again." | Donia, before the first clinic |
+| 4 | Dentally to waitlist sync is not wired (`lib/waitlist-sync.ts` is only a planner). When it is wired, its insert must use `inheritedOptOut()`. | Phase 5 |
+| 5 | Small Supabase advisor warnings: (a) set `search_path` on `private.block_scrubbed_waitlist_reactivation()` (needs a new migration `0010`); (b) move `pg_net` out of the public schema; (c) turn on leaked password protection in Supabase Auth settings (do before real clinics). | Before the pilot |
+| 6 | Dev migration history table is missing `0007`, `0008`, `0009` (they were run in the SQL Editor; `0006` was recorded when Claude applied it on 2026-11-07). `pnpm clinic:migrate-all` skips a migration only if its version OR name is in the history, so on this dev project it would try to run 0007–0009 again and fail on `ADD COLUMN` (no data change, but an error). Fix: insert the three history rows (ask Claude for the SQL), and always run `--dry-run` first. Fresh clinics made with `clinic:setup` are not affected. Only matters if dev gets a `clinics/<slug>.env` file. | Before using `clinic:migrate-all` on dev |
+
 ## Blocked / needs Donia
 
 **Accounts and keys (put values only in `.env.local` or the clinic file, never in chat):**
@@ -45,7 +58,7 @@ Percent = finished phases out of the 7 in guide §19, and a phase counts as done
 - Geist Sans is self-hosted instead of Google Fonts. Tell me if you prefer Google Fonts.
 - Each clinic must paste its own privacy notice link in Settings. Until then `/join` shows a short "ask the practice" line instead.
 
-- **Migration 0006 (monthly_reports) is not applied to the live dev database yet.** The Supabase tool returned a permission error. Run `supabase/migrations/20270101000006_monthly_reports.sql` in the Supabase SQL editor (or `supabase db push`), then open `/reports`.
+- Migration 0006 (monthly_reports) was applied to the dev database on 2026-11-07 (Donia asked; table, RLS, 3 policies and trigger checked). Dev now has migrations 0001–0009. Open `/reports` to try it. Real clinics still need `pnpm clinic:migrate-all`.
 
 **Heads-ups:**
 - A waitlist patient's "notice needed" defaults to 48 h (guide §6.2), so a slot less than 48 h away is offered only to patients who chose a shorter notice.
