@@ -464,6 +464,9 @@ INSERT INTO public.messages (id, clinic_id, pipeline_id, offer_id, waitlist_pati
   ('d0000006-0000-4000-8000-000000000006', 'aaaaaaaa-0000-4000-8000-000000000001', 'f0000004-0000-4000-8000-000000000004', NULL, NULL, 'sms', 'out', '+447700900001', 'open job text', 'SM6', 'sent', now() - interval '1 day'),
   ('d0000007-0000-4000-8000-000000000007', 'aaaaaaaa-0000-4000-8000-000000000001', 'f0000003-0000-4000-8000-000000000003', NULL, NULL, 'email', 'out', 'alice@x.test', 'recent closed text', NULL, 'sent', now() - interval '5 days');
 
+INSERT INTO public.waitlist (id, clinic_id, patient_name, phone, sms_opt_out, sms_opt_out_at, is_active) VALUES
+  ('a3a3a3a3-0000-4000-8000-000000000003', 'aaaaaaaa-0000-4000-8000-000000000001', 'Stopped Sam', '+447700900777', TRUE, '2026-01-01 10:00:00+00', FALSE);
+
 -- Snapshots to compare after the purge.
 CREATE TEMP TABLE before_pipeline AS SELECT id, md5(p::text) AS h FROM public.recovery_pipeline p;
 CREATE TEMP TABLE before_waitlist AS SELECT id, md5(w::text) AS h FROM public.waitlist w;
@@ -520,6 +523,7 @@ BEGIN
   -- Never deleted, never changed where reports and delivery stats look.
   PERFORM test.assert_eq('no table lost a row', (SELECT count(*) FROM before_counts b WHERE b.e = (SELECT count(*) FROM public.cancellation_events) AND b.p = (SELECT count(*) FROM public.recovery_pipeline) AND b.h = (SELECT count(*) FROM public.recovery_pipeline_history) AND b.m = (SELECT count(*) FROM public.messages) AND b.o = (SELECT count(*) FROM public.waitlist_offers) AND b.w = (SELECT count(*) FROM public.waitlist)), 1);
   PERFORM test.assert_eq('recovery_pipeline rows byte-identical (updated_at not bumped, reports unchanged)', (SELECT count(*) FROM before_pipeline b JOIN public.recovery_pipeline p ON p.id = b.id WHERE md5(p::text) <> b.h), 0);
+  PERFORM test.assert_eq('STOP suppression data (phone, flag, date) survives the purge', (SELECT count(*) FROM public.waitlist WHERE id = 'a3a3a3a3-0000-4000-8000-000000000003' AND phone = '+447700900777' AND sms_opt_out AND sms_opt_out_at = '2026-01-01 10:00:00+00'), 1);
   PERFORM test.assert_eq('waitlist rows byte-identical', (SELECT count(*) FROM before_waitlist b JOIN public.waitlist w ON w.id = b.id WHERE md5(w::text) <> b.h), 0);
   PERFORM test.assert_eq('message channel/direction/status/provider_id/created_at unchanged', (SELECT count(*) FROM before_messages b JOIN public.messages m ON m.id = b.id WHERE (m.channel, m.direction, m.status, m.provider_id, m.created_at) IS DISTINCT FROM (b.channel, b.direction, b.status, b.provider_id, b.created_at)), 0);
   PERFORM test.assert_eq('audit columns survive the purge', (SELECT count(*) FROM public.recovery_pipeline WHERE id = 'f0000002-0000-4000-8000-000000000002' AND approved_by_name = 'Amy' AND approved_via = 'slack' AND approved_at IS NOT NULL), 1);

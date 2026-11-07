@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { FormState } from "@/lib/form-state";
+import { inheritedOptOut, STAFF_OPTED_OUT_NOTE } from "@/lib/sms-suppression";
 import { getStaffContext, SIGN_IN_AGAIN } from "@/lib/staff-session";
 import { fieldErrors, formDataToObject, waitlistPatientFormSchema } from "@/lib/validation";
 import { z } from "zod";
@@ -30,10 +31,24 @@ export async function saveWaitlistPatient(_prev: FormState, formData: FormData):
     notes: v.notes ?? null,
   };
 
+  // STOP follows the phone number. If another row of this clinic with the same number opted out, this
+  // row inherits it (flag + date) and keeps it. Staff can only ever SET it here, never clear it:
+  // only the patient clears it (reply START, or "yes" after signing up again).
+  let inherited: ReturnType<typeof inheritedOptOut> = null;
+  if (fields.phone) {
+    const { data: sameClinic, error: lookupError } = await ctx.supabase
+      .from("waitlist")
+      .select("id, phone, sms_opt_out, sms_opt_out_at")
+      .eq("clinic_id", ctx.clinic.id)
+      .eq("sms_opt_out", true);
+    if (lookupError) return { error: "Could not check the patient's SMS preference. Please try again." };
+    inherited = inheritedOptOut((sameClinic ?? []).filter((row) => row.id !== id), fields.phone);
+  }
+
   if (id) {
     const { data, error } = await ctx.supabase
       .from("waitlist")
-      .update(fields)
+      .update({ ...fields, ...(inherited ?? {}) })
       .eq("id", id)
       .eq("clinic_id", ctx.clinic.id)
       .select("id");
@@ -42,6 +57,7 @@ export async function saveWaitlistPatient(_prev: FormState, formData: FormData):
   } else {
     const { error } = await ctx.supabase.from("waitlist").insert({
       ...fields,
+      ...(inherited ?? {}),
       clinic_id: ctx.clinic.id,
       added_by: ctx.actorLabel,
       opt_in_source: "receptionist",
@@ -51,7 +67,8 @@ export async function saveWaitlistPatient(_prev: FormState, formData: FormData):
   }
 
   revalidatePath("/crm/waitlist");
-  return { message: id ? "Patient updated." : "Patient added." };
+  const base = id ? "Patient updated." : "Patient added.";
+  return inherited ? { message: base, smsOptedOutNote: STAFF_OPTED_OUT_NOTE } : { message: base };
 }
 
 const toggleSchema = z.object({ id: z.uuid(), active: z.boolean() });

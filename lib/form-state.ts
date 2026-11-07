@@ -10,4 +10,6 @@ export type FormState = {
   confirmDuplicate?: boolean;
   /** Public sign-up: this patient earlier replied STOP; ask whether texts should start again. */
   askSmsPreference?: { patientId: string };
+  /** Staff waitlist form: the saved patient's number opted out of SMS earlier. Shown until staff close the dialog. */
+  smsOptedOutNote?: string;
 } | null;

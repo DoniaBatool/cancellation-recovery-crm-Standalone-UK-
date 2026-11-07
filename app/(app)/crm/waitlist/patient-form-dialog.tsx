@@ -73,7 +73,8 @@ function PatientForm({
   const [state, formAction] = useActionState(saveWaitlistPatient, null);
 
   React.useEffect(() => {
-    if (state?.message) onDone();
+    // When the number opted out earlier, keep the dialog open so staff read the note before closing.
+    if (state?.message && !state.smsOptedOutNote) onDone();
     // onDone changes identity on every render of the parent; only the result matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
@@ -82,6 +83,7 @@ function PatientForm({
     <Form action={formAction} noValidate className="flex flex-col gap-4">
       {patient ? <input type="hidden" name="id" value={patient.id} /> : null}
       {state?.error ? <Alert tone="error">{state.error}</Alert> : null}
+      {state?.smsOptedOutNote ? <Alert tone="info">{state.message} {state.smsOptedOutNote}</Alert> : null}
 
       <Field id="patient_name" label="Name" error={state?.fieldErrors?.patient_name}>
         {(aria) => <Input {...aria} name="patient_name" defaultValue={patient?.patient_name} required autoComplete="off" />}
@@ -135,7 +137,7 @@ function PatientForm({
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onDone}>
-          Cancel
+          {state?.smsOptedOutNote ? "Close" : "Cancel"}
         </Button>
         <SubmitButton pendingText="Saving…">{patient ? "Save changes" : "Add patient"}</SubmitButton>
       </div>

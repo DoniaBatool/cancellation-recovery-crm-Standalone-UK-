@@ -58,5 +58,6 @@ The whole loop is built. It has been run end to end against a test database with
 - Each clinic's data is separate; staff only see their own clinic.
 - Patients only see their own offer page, reached through a private link.
 - Nothing secret (keys, passwords) is stored in the code.
+- A patient who replies STOP never gets a text again on that phone number, even if reception adds them to the list again later. The new entry is saved but marked "opted out" with a note for the staff, and only the patient can switch texts back on (reply START, or say yes when signing up again). Reception has no button for it. Emails are not affected.
 - Every approval is logged: who approved, when, through which channel (CRM board, Slack or the email link), and which version of the offer text was sent. The Activity page shows it as "Approved by X via Y at T".
 - Personal data is cleaned up automatically. Every night at 03:15 UTC the database scrubs the cancelled patient's name, email, phone and reason, the free-text history notes and the message texts of jobs that finished more than 30 days ago. Rows are never deleted: dates, stages, revenue and delivery status stay, so monthly reports do not change. Waitlist patients are not touched by this.

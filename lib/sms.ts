@@ -1,6 +1,7 @@
 import twilio from "twilio";
 import type { Env } from "@/lib/env";
 import type { Db } from "@/lib/pipeline";
+import { loadOptedOutPhones, phoneKey } from "@/lib/sms-suppression";
 
 // SMS sending through Twilio. Source: SYSTEM_BUILD_GUIDE.md §7 E4.
 // `send` never throws and always writes a `messages` row, so the audit trail shows what happened.
@@ -29,6 +30,14 @@ export function createSmsSender(config: TwilioConfig, db: Db, appUrl: string, cl
   const twilioClient: TwilioLike = client ?? (twilio(config.accountSid, config.authToken) as unknown as TwilioLike);
   return {
     async send(input) {
+      // Last gate for EVERY text: if any row of this clinic with this number replied STOP, nothing is
+      // sent, whatever the row being messaged says. If we cannot check, we do not send (fail closed).
+      const optedOut = await loadOptedOutPhones(db, input.clinicId);
+      const key = phoneKey(input.to);
+      if (optedOut === null || (key !== null && optedOut.has(key))) {
+        if (optedOut === null) console.error("SMS not sent: could not check opt-outs.");
+        return false;
+      }
       let sid: string | null = null;
       let status = "failed";
       let error: string | null = null;

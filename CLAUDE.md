@@ -42,7 +42,7 @@ Note on the UI rule: the generic project-workflow skill lists seven UI skills. F
 
 ## 4. Compliance features (DPA UK GDPR Art. 28)
 
-Two features back promises in the DPA. Do not weaken them without telling Donia.
+Three features back promises in the DPA. Do not weaken them without telling Donia.
 
 **Approval audit trail (DPA 5.6: "every patient message ties back to a logged approval: who approved, when, through which channel, and which version of the offer text was sent")**
 - Columns (migration `0007`): `recovery_pipeline.approved_at` (existing), `approved_by` (existing; CRM login UUID, NULL for Slack), `approved_by_name` (new), `approved_via` (new: `portal` | `slack` | `email` | `other`), and `waitlist_offers.template_version` (new).
@@ -59,6 +59,14 @@ Two features back promises in the DPA. Do not weaken them without telling Donia.
 - Known gap: `recovery_pipeline.notes` (the staff-typed reason when a card is closed, up to 300 characters) is NOT scrubbed, because that needs an UPDATE of `recovery_pipeline`. Staff should not type patient names there.
 - Schedule: pg_cron job **`chairfill-purge`**, daily **03:15 UTC**, command `select private.purge_closed_job_personal_data()`. It lives in `CRON_JOBS` in `scripts/lib/clinic-env.mjs` (an in-database job: `sql` instead of `path`), so `clinic:setup` schedules it for new clinics and `clinic:migrate-all` re-schedules it by name after the migrations (safe to re-run; dry-run lists it). There is no second scheduling path.
 - **Open decision:** waitlist patients with `is_active = false` (e.g. after STOP) are NOT purged. Decide a retention rule for them before the DPA is signed with a clinic.
+
+**STOP follows the phone number (SMS suppression)**
+- Opt-out lives in `waitlist.sms_opt_out` (+ `sms_opt_out_at`). It is checked by **number**, not by row: if ANY waitlist row of the same clinic has the same number (compared in E.164 via `normalizeUkPhone`) with `sms_opt_out = true`, no SMS goes to that number from any row. Code: `lib/sms-suppression.ts` (`phoneKey`, `findOptOut`, `inheritedOptOut`, `loadOptedOutPhones`).
+- Enforced at send time in two places: (1) `lib/engine/offer.ts` marks every candidate whose number opted out as opted out before matching, so no SMS channel is offered; (2) `createSmsSender().send()` in `lib/sms.ts` is the last gate for EVERY text (offers and the booked confirmation): it refuses and writes no message row. If the opt-out list cannot be read, SMS is blocked (fail closed); email is unaffected.
+- Staff add/edit (`app/(app)/crm/waitlist/actions.ts`): a patient whose number matches an opted-out row is still created or saved, but the row gets `sms_opt_out = true` and the original `sms_opt_out_at`, and staff see "This patient opted out earlier. They will not get SMS until they reply START." (`smsOptedOutNote` in `FormState`, shown by `patient-form-dialog.tsx`, which stays open until staff close it). The action can only SET the flag, never clear it.
+- **No staff button clears `sms_opt_out`, and none must be added.** Only the patient clears it: reply START (`lib/engine/inbound-sms.ts` updates every row with that number) or answer "yes" after signing up again on the public link/QR (`answerSmsPreference` in `app/join/[slug]/actions.ts`). A test fails if any other file under `app/` or `lib/` writes `sms_opt_out: false`.
+- Dentally to waitlist sync: `lib/waitlist-sync.ts` is only a planner today; nothing calls it, so no Dentally row is written to `waitlist` yet. **When that sync is wired, its insert must use `inheritedOptOut()` like the staff form.** The send-time gates above already protect a row that slips through.
+- Any waitlist scrub (the open decision above) must keep `phone`, `sms_opt_out` and `sms_opt_out_at` for opted-out patients, or this suppression stops working. Today's purge never touches `waitlist` (tested in SQL: the suppression data survives a purge run).
 
 **Rule: never edit an applied migration.** `0001`–`0008` are applied (or about to be) on live projects. Any schema or function change is a NEW numbered migration. If the purge function itself must change, add a migration with `CREATE OR REPLACE FUNCTION`.
 
@@ -82,6 +90,7 @@ Two features back promises in the DPA. Do not weaken them without telling Donia.
 | `scripts/clinic-migrate-all.mjs` | `pnpm clinic:migrate-all [--dry-run]`: pending migrations to every clinic file | After adding a migration |
 | `scripts/simulate-flow.mjs`, `scripts/simulate/` | `pnpm simulate [--fast]`: whole loop on the dev database with a recording notifier; deletes its own test clinic | After engine changes; before a pilot |
 | `scripts/lib/*.mjs`, `*.d.mts` | Unit-tested helpers and steps behind the clinic scripts | When changing the clinic scripts |
+| `lib/sms-suppression.ts` | STOP-by-phone helpers (match in E.164, inherit the flag, load the clinic's opted-out numbers) | When anything decides whether an SMS may be sent, or a waitlist row is created |
 | `tests/sql/supabase-stub.sql` | Test-only stand-in for Supabase roles and `auth.uid()` | Only used by `pnpm test:rls` |
 | `tests/sql/rls-assertions.sql` | Row-level-security checks run on a local Postgres | When adding tables or policies |
 | `scripts/rls-check.sh` | Runs the real migrations on a throwaway Postgres and the RLS checks | `pnpm test:rls`; part of the full test suite |

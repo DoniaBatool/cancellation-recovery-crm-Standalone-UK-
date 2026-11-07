@@ -5,6 +5,7 @@ import type { OfferChannel } from "@/lib/engine/notifier";
 import { formatTime } from "@/lib/format";
 import { logHistory, transitionStage } from "@/lib/pipeline";
 import { quietHoursResume } from "@/lib/quiet-hours";
+import { loadOptedOutPhones, phoneKey } from "@/lib/sms-suppression";
 import { templateVersionFor } from "@/lib/template-versions";
 import { matchWaitlist, type Candidate } from "@/lib/waitlist-matching";
 
@@ -82,13 +83,20 @@ export async function offerNext(
   }
 
   // Who can be offered this slot: matching rules, and a channel the notifier can really use.
-  const { data: waitlist } = await deps.db.from("waitlist").select("*").eq("clinic_id", clinic.id).eq("is_active", true);
+  const { data: waitlistRows } = await deps.db.from("waitlist").select("*").eq("clinic_id", clinic.id).eq("is_active", true);
+  // STOP is per phone number: a number that opted out on ANY row of this clinic gets no SMS on any row.
+  // If the opt-out list cannot be read, treat every number as opted out (email only).
+  const optedOut = await loadOptedOutPhones(deps.db, clinic.id);
+  const waitlist = (waitlistRows ?? []).map((p) => {
+    const key = phoneKey(p.phone);
+    return optedOut === null || (key !== null && optedOut.has(key)) ? { ...p, sms_opt_out: true } : p;
+  });
   const wanted = config.offer_channels.filter((c): c is OfferChannel => c === "email" || c === "sms");
   const usable = (c: Candidate): OfferChannel[] =>
     wanted.filter((ch) => deps.notifier.channels.includes(ch)).filter((ch) => (ch === "email" ? Boolean(c.email) : Boolean(c.phone) && !c.sms_opt_out));
 
   const matches = matchWaitlist(
-    waitlist ?? [],
+    waitlist,
     { datetime: slot, procedure: event.procedure_type, doctor: event.doctor_name, timeZone: clinic.timezone },
     now,
     { excludePatientIds: offers.map((o) => o.waitlist_patient_id) },
