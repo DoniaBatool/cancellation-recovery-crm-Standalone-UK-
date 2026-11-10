@@ -35,6 +35,7 @@ Note on the UI rule: the generic project-workflow skill lists seven UI skills. F
 
 ## 3. Build rules
 
+- **Current scope (Donia, 2026-11-10): no SMS, Twilio or WhatsApp work for now.** Add them only when a paying client asks. The product runs on **Slack (front desk) + email (patient offers and confirmations)**. The SMS code already in the repo stays, switched off (no `TWILIO_*` variables means email-only); do not delete it and do not build new SMS features. Details in `PROGRESS.md` "Scope decision". `SYSTEM_BUILD_GUIDE.md` still describes SMS as the main channel: tell Donia about the trade-off rather than editing the guide.
 - Do not add libraries or change the stack without asking Donia.
 - **Never put secrets** (API keys, passwords, tokens) in code, commits or chat. Use `.env.local` only (gitignored). Keep `.env.example` updated, with no values.
 - Do not invent statistics, prices or claims. Admin features only, never clinical advice.

@@ -6,6 +6,8 @@ Everything lives in one Next.js app. There is no n8n. The full specification is 
 
 Status: **Phases 1 and 2 are done and checked live. Phases 3 to 6 are fully coded and tested with fixtures and mocks, and the whole loop passes a real end-to-end simulation against the dev database. What is left is checking them with real accounts (Brevo, Twilio, Slack, Dentally sandbox, Vercel) and the shadow-mode pilot (Phase 7).** See `PROGRESS.md`.
 
+> **Scope for now:** Slack (front desk) + email for offers and confirmations. SMS/Twilio is built but switched off until a paying client asks (see `PROGRESS.md`).
+
 ## Docs index
 
 | File | What it contains | When to use it |

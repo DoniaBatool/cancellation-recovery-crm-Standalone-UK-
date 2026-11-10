@@ -11,15 +11,25 @@ Percent = finished phases out of the 7 in guide §19, and a phase counts as done
 | 1. Foundation | Next.js app, tokens, UI components, schema + RLS (migrations 0001–0003, v2.1), env validation, auth pages, proxy, app shell | ✅ done 2026-10-26 |
 | 2. CRM core | Waitlist, patient page, settings, team, join + QR, activity, board, manual cancellation | ✅ done 2026-10-26 |
 | 3. Offer loop (no PMS) | Matching, email offers, /confirm, approval (Slack one-tap + CRM + email + /approve), confirmations, expiry tick, dashboard | 🔄 built + tested with mocks; needs a real Brevo send and a Slack click to be called done |
-| 4. SMS | Twilio send/status/inbound, templates, quiet hours, shadow mode, STOP/START | 🔄 built + tested with mocks; needs a real Twilio number and webhooks |
+| 4. SMS | Twilio send/status/inbound, templates, quiet hours, shadow mode, STOP/START | ⏸ DEFERRED by Donia (2026-11-10): code is built and tested with mocks and stays in the repo, switched off; no Twilio work until a paying client asks |
 | 5. Dentally | Read-only client (GET only), webhook, normaliser, poller, doctor import, health monitoring | 🔄 built + tested with fixtures; the Dentally API shapes are ASSUMED, to confirm in a sandbox |
 | 6. Hardening + multi-clinic | clinic-setup script, migrate-all, pg_cron SQL, rate limits (migration 0004), simulate script | 🔄 built + tested; the simulate loop passes on the live dev DB; the setup script has not run against a real new clinic yet |
 | 7. Pilot | Shadow week, then live | ⏳ not started |
 
+## Scope decision (Donia, 2026-11-10)
+
+No SMS, Twilio or WhatsApp work for now. It is added only when a paying client asks for it. Until then the product uses:
+- **Slack** for the front desk (one-tap approval, alerts), plus the CRM board and the `/approve/<token>` email link as other ways to approve;
+- **Email** for patient offers and for confirmations.
+
+What this means in the repo: the SMS code (guide Phase 4, STOP-by-phone, the waitlist scrub, templates) stays as it is and is NOT removed. It is inactive because the Twilio env vars are not set: `lib/env.ts` then gives no SMS sender, the notifier offers email only, and `clinic_config.offer_channels` can keep its default `{sms,email}` (SMS is simply skipped). When a client wants SMS: set the `TWILIO_*` variables, point the two Twilio webhooks at the app, and run the Phase 4 live check (shadow mode first).
+
+Heads-up (the guide's own reasoning, not changed): `SYSTEM_BUILD_GUIDE.md` calls SMS the main offer channel because email alone is slow, and the default offer hold time is 30 minutes. With email only, a slot may fill more slowly or expire more often. The guide text is not edited; tell Claude if you want it updated to match.
+
 ## Now
 
 - Everything that can be built without Donia's accounts is built. Nothing is committed or pushed (Donia pushes herself).
-- Live checks left, in this order: (1) Brevo email, (2) Twilio SMS + webhooks, (3) Slack one-tap, (4) Dentally sandbox, (5) `pnpm clinic:setup` on a real new clinic with Vercel, (6) one shadow-mode week (Phase 7).
+- Live checks left, in this order: (1) Brevo email, (2) Slack one-tap, (3) Dentally sandbox, (4) `pnpm clinic:setup` on a real new clinic with Vercel, (5) one shadow-mode week (Phase 7). The Twilio SMS live check is deferred (see Scope decision).
 
 ## Next
 
@@ -35,17 +45,17 @@ Claude: at the start of every session, after the 3–4 line status, remind Donia
 | --- | --- | --- |
 | 1 | Scrub for **Booked** and **Removed / no reply** waitlist patients is not built. Decide the retention days with the first real clinic, then build it like the opted-out scrub (scrub never delete, idempotent, cron, tests). First define what "inactive" means: the engine does not set `is_active = false` on booking or no reply. See `DATA_RETENTION_STATUS.md`. | First real clinic |
 | 2 | No cleanup exists for `recovery_pipeline.notes` (staff free text) and `rate_limits` (hashed IP rows). Both are OPEN in `DATA_RETENTION_STATUS.md`. | Before the DPA is signed |
-| 3 | Add one line to the DPA and the privacy notice: "For patients who opt out of SMS, we keep only the phone number, as a suppression record, so they are not texted again." | Donia, before the first clinic |
+| 3 | (Only needed once SMS is switched on for a client; deferred with SMS.) Add one line to the DPA and the privacy notice: "For patients who opt out of SMS, we keep only the phone number, as a suppression record, so they are not texted again." | Donia, before the first clinic |
 | 4 | Dentally to waitlist sync is not wired (`lib/waitlist-sync.ts` is only a planner). When it is wired, its insert must use `inheritedOptOut()`. | Phase 5 |
 | 5 | Small Supabase advisor warnings: (a) set `search_path` on `private.block_scrubbed_waitlist_reactivation()` (needs a new migration `0010`); (b) move `pg_net` out of the public schema; (c) turn on leaked password protection in Supabase Auth settings (do before real clinics). | Before the pilot |
-| 6 | Dev migration history table is missing `0007`, `0008`, `0009` (they were run in the SQL Editor; `0006` was recorded when Claude applied it on 2026-11-07). `pnpm clinic:migrate-all` skips a migration only if its version OR name is in the history, so on this dev project it would try to run 0007–0009 again and fail on `ADD COLUMN` (no data change, but an error). Fix: insert the three history rows (ask Claude for the SQL), and always run `--dry-run` first. Fresh clinics made with `clinic:setup` are not affected. Only matters if dev gets a `clinics/<slug>.env` file. | Before using `clinic:migrate-all` on dev |
+| 6 | ✅ DONE 2026-11-07 (Claude inserted the three history rows; dev history now lists 0001–0009). Was: dev migration history table is missing `0007`, `0008`, `0009` (they were run in the SQL Editor; `0006` was recorded when Claude applied it on 2026-11-07). `pnpm clinic:migrate-all` skips a migration only if its version OR name is in the history, so on this dev project it would try to run 0007–0009 again and fail on `ADD COLUMN` (no data change, but an error). Fix: insert the three history rows (ask Claude for the SQL), and always run `--dry-run` first. Fresh clinics made with `clinic:setup` are not affected. Only matters if dev gets a `clinics/<slug>.env` file. | Before using `clinic:migrate-all` on dev |
 
 ## Blocked / needs Donia
 
 **Accounts and keys (put values only in `.env.local` or the clinic file, never in chat):**
 
 1. **Brevo** (free): account, SMTP key, a verified sender address or domain. Needed for offer emails, reception alerts, confirmations and for team invites (Supabase Auth must use the same SMTP; `pnpm clinic:setup` sets that up).
-2. **Twilio:** account, a UK number or Messaging Service, then set the incoming-message URL to `APP_URL/api/webhooks/twilio/inbound` and the status callback to `APP_URL/api/webhooks/twilio/status`.
+2. **Twilio — DEFERRED until a paying client asks for SMS:** account, a UK number or Messaging Service, then set the incoming-message URL to `APP_URL/api/webhooks/twilio/inbound` and the status callback to `APP_URL/api/webhooks/twilio/status`.
 3. **Slack** (optional): a Slack app with a bot token, signing secret and a front-desk-only channel id; interactivity URL `APP_URL/api/webhooks/slack/actions`.
 4. **Dentally sandbox:** a test account with a read-only API token and the base URL, and a webhook pointed at `APP_URL/api/webhooks/dentally/<DENTALLY_WEBHOOK_SECRET>`. **I need to see one real appointment JSON and one real webhook payload** to confirm the field names I assumed (see "Assumptions" below).
 5. **Vercel project + real domain** (for example a slotrefill domain; availability was checked once, trademark was not). Then set `NEXT_PUBLIC_APP_URL` to it. For the clinic setup script: `VERCEL_TOKEN` and `VERCEL_PROJECT_ID` (or paste the generated `.vercel.env` yourself).
