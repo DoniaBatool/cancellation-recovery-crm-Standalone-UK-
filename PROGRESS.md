@@ -1,24 +1,24 @@
 # PROGRESS.md
 
-_Last updated: 2026-10-27 (Phases 3c, 4, 5, 6 coded and tested) · Owner: Donia_
+_Last updated: 2026-11-14 (live Brevo email check passed; next: Slack live check) · Owner: Donia_
 
-## Overall: 29% verified done (Phases 1 and 2) — Phases 3 to 6 are fully coded and tested, waiting for live checks with real accounts
+## Overall: 29% verified done (Phases 1 and 2) — Phases 3 to 6 are coded and tested, waiting for live checks with real accounts; Phase 4 (SMS) is deferred
 
-Percent = finished phases out of the 7 in guide §19, and a phase counts as done only when its "done when" is true. Phases 3 to 6 are **built** (about 86% of the code is in place), but their "done when" needs real Brevo, Twilio, Slack, Dentally and Vercel accounts, so they are **not ticked** in guide §22. What has been proven: 543 unit tests, the local RLS check, a production build, and `pnpm simulate` (normal and `--fast`) running the whole loop against the live dev database with a recording notifier.
+Percent = finished phases out of the 7 in guide §19, and a phase counts as done only when its "done when" is true. Phases 3 to 6 are **built** (about 86% of the code is in place), but their "done when" needs real Brevo, Twilio, Slack, Dentally and Vercel accounts, so they are **not ticked** in guide §22. What has been proven: 642 unit tests, the local RLS check, a production build, and `pnpm simulate` (normal and `--fast`) running the whole loop against the live dev database with a recording notifier (the simulate run is from 2026-10-27). Since then: audit trail, 30-day purge, STOP-by-phone and the opted-out waitlist scrub were added (migrations 0007 to 0010); the dev Supabase project has migrations 0001 to 0010 applied and its migration history is complete. Real clinic projects still need `pnpm clinic:migrate-all`.
 
 | Phase | Build | Status |
 | --- | --- | --- |
 | 1. Foundation | Next.js app, tokens, UI components, schema + RLS (migrations 0001–0003, v2.1), env validation, auth pages, proxy, app shell | ✅ done 2026-10-26 |
 | 2. CRM core | Waitlist, patient page, settings, team, join + QR, activity, board, manual cancellation | ✅ done 2026-10-26 |
 | 3. Offer loop (no PMS) | Matching, email offers, /confirm, approval (Slack one-tap + CRM + email + /approve), confirmations, expiry tick, dashboard | 🔄 built + tested with mocks; needs a real Brevo send and a Slack click to be called done |
-| 4. SMS | Twilio send/status/inbound, templates, quiet hours, shadow mode, STOP/START | ⏸ DEFERRED by Donia (2026-11-10): code is built and tested with mocks and stays in the repo, switched off; no Twilio work until a paying client asks |
+| 4. SMS | Twilio send/status/inbound, templates, quiet hours, shadow mode, STOP/START | ⏸ DEFERRED by Donia (2026-11-10): code is built and tested with mocks and stays in the repo, switched off; no Twilio work until the rest of the project is complete (and time is left) or a paying client asks |
 | 5. Dentally | Read-only client (GET only), webhook, normaliser, poller, doctor import, health monitoring | 🔄 built + tested with fixtures; the Dentally API shapes are ASSUMED, to confirm in a sandbox |
 | 6. Hardening + multi-clinic | clinic-setup script, migrate-all, pg_cron SQL, rate limits (migration 0004), simulate script | 🔄 built + tested; the simulate loop passes on the live dev DB; the setup script has not run against a real new clinic yet |
 | 7. Pilot | Shadow week, then live | ⏳ not started |
 
 ## Scope decision (Donia, 2026-11-10)
 
-No SMS, Twilio or WhatsApp work for now. It is added only when a paying client asks for it. Until then the product uses:
+No SMS, Twilio or WhatsApp work for now, so the project can be finished as fast as possible. SMS is added later, after the project is complete and if time is left, or earlier if a paying client asks for it. Until then the product uses:
 - **Slack** for the front desk (one-tap approval, alerts), plus the CRM board and the `/approve/<token>` email link as other ways to approve;
 - **Email** for patient offers and for confirmations.
 
@@ -29,7 +29,8 @@ Heads-up (the guide's own reasoning, not changed): `SYSTEM_BUILD_GUIDE.md` calls
 ## Now
 
 - Everything that can be built without Donia's accounts is built. Nothing is committed or pushed (Donia pushes herself).
-- Live checks left, in this order: (1) Brevo email, (2) Slack one-tap, (3) Dentally sandbox, (4) `pnpm clinic:setup` on a real new clinic with Vercel, (5) one shadow-mode week (Phase 7). The Twilio SMS live check is deferred (see Scope decision).
+- ✅ Brevo email live check done 2026-11-14 (a real test email sent via Brevo SMTP reached Donia's Gmail inbox; sender is her personal Gmail for dev only, see open item 8).
+- Live checks left, in this order: (2) Slack one-tap, (3) Dentally sandbox, (4) `pnpm clinic:setup` on a real new clinic with Vercel, (5) one shadow-mode week (Phase 7). The Twilio SMS live check is deferred (see Scope decision).
 
 ## Next
 
@@ -47,8 +48,10 @@ Claude: at the start of every session, after the 3–4 line status, remind Donia
 | 2 | No cleanup exists for `recovery_pipeline.notes` (staff free text) and `rate_limits` (hashed IP rows). Both are OPEN in `DATA_RETENTION_STATUS.md`. | Before the DPA is signed |
 | 3 | (Only needed once SMS is switched on for a client; deferred with SMS.) Add one line to the DPA and the privacy notice: "For patients who opt out of SMS, we keep only the phone number, as a suppression record, so they are not texted again." | Donia, before the first clinic |
 | 4 | Dentally to waitlist sync is not wired (`lib/waitlist-sync.ts` is only a planner). When it is wired, its insert must use `inheritedOptOut()`. | Phase 5 |
-| 5 | Small Supabase advisor warnings: (a) set `search_path` on `private.block_scrubbed_waitlist_reactivation()` (needs a new migration `0010`); (b) move `pg_net` out of the public schema; (c) turn on leaked password protection in Supabase Auth settings (do before real clinics). | Before the pilot |
+| 5 | Small Supabase advisor warnings: (a) ✅ DONE 2026-11-10 (migration `0010` pins the `search_path`; applied on dev; the warning is gone); (b) move `pg_net` out of the public schema; (c) turn on leaked password protection in Supabase Auth settings (do before real clinics). | Before the pilot |
 | 6 | ✅ DONE 2026-11-07 (Claude inserted the three history rows; dev history now lists 0001–0009). Was: dev migration history table is missing `0007`, `0008`, `0009` (they were run in the SQL Editor; `0006` was recorded when Claude applied it on 2026-11-07). `pnpm clinic:migrate-all` skips a migration only if its version OR name is in the history, so on this dev project it would try to run 0007–0009 again and fail on `ADD COLUMN` (no data change, but an error). Fix: insert the three history rows (ask Claude for the SQL), and always run `--dry-run` first. Fresh clinics made with `clinic:setup` are not affected. Only matters if dev gets a `clinics/<slug>.env` file. | Before using `clinic:migrate-all` on dev |
+| 7 | **Last step, when the whole project is complete:** add a note to `SYSTEM_BUILD_GUIDE.md` that SMS/Twilio/WhatsApp were switched off (deferred) for the first version, and that email + Slack carry offers and approvals. Do NOT edit the guide before that (Donia's decision 2026-11-10). | End of the project |
+| 8 | **Before the first real clinic:** replace the dev email values (Donia's Gmail as `SMTP_FROM`, dev SMTP key, Gmail as `OPERATOR_ALERT_EMAIL` / `SHADOW_TEST_EMAIL`) with a Brevo-verified business sender and new keys. Walk through the table "Dev email values to replace for a real clinic" in `NEW_CLINIC_SETUP.md` one item at a time. | First real clinic |
 
 ## Blocked / needs Donia
 
@@ -96,6 +99,8 @@ Also not tested live: the Supabase Management API calls in `scripts/lib/api-clie
 
 | Date | Built | Tests | Left |
 | --- | --- | --- | --- |
+| 2026-11-14 (Brevo live check) | Dev `.env.local` filled with Brevo SMTP (host, port, login, a new key `slotrefill-dev`, sender Donia's Gmail verified in Brevo, alert and shadow emails). Sent a real test email with nodemailer from the Mac; it arrived in the inbox. Open item 8 and a "Dev email values to replace for a real clinic" table added to `NEW_CLINIC_SETUP.md` | no code change; test suite not re-run | Next: Slack live check (bot token, signing secret, channel id, interactivity URL). Needs a public HTTPS app URL for the buttons |
+| 2026-11-10 (scope + housekeeping) | Scope decision: Slack + email only, SMS/Twilio deferred (code stays, switched off). Migration `0010_fix_block_reactivation_search_path` (pins the trigger function search_path). Dev project: `0006`–`0010` applied and recorded in the migration history; pg_cron on, jobs `chairfill-purge` and `chairfill-waitlist-scrub` scheduled (the purge ran by itself on 2026-11-07 03:15 UTC). Open-items list added. Header refreshed | typecheck clean; 642 tests pass; local RLS_ALL_OK; advisor: search_path warning gone | Next: live Brevo email check, then Slack. Open items 1–5 and 7 stay in the list above |
 | 2026-11-07 (30-day scrub of opted-out waitlist rows) | Migration `0009_scrub_opted_out_waitlist` (`waitlist.scrubbed_at`, `purge_log.waitlist_scrubbed`, `private.scrub_opted_out_waitlist()`); pg_cron job `chairfill-waitlist-scrub` (daily 03:20 UTC) in `CRON_JOBS`; `clinic:setup` and `clinic:migrate-all` warn if a database job is not scheduled (`verifyJobsScheduled`). Keeps phone + `sms_opt_out` + `sms_opt_out_at` as the suppression record. Only INACTIVE opted-out rows are scrubbed (an active, email-reachable one is never touched); scrubbed rows cannot be switched back on (CRM message `SCRUBBED_PATIENT_NOTE`, trigger `trg_waitlist_block_scrubbed_reactivation`); public sign-up on a scrubbed number inserts a new row that inherits the opt-out; `answerSmsPreference` yes and START clear the opt-out on every row of the number (START leaves scrubbed rows inactive, reply `startScrubbedSms`). Docs: CLAUDE.md, HOW_IT_WORKS, README | typecheck clean; 641 tests pass; local RLS_ALL_OK incl. scrub assertions (old inactive row scrubbed, active+email/young/START/no-phone rows untouched, second run 0, anon/authenticated blocked, scrubbed row cannot be re-activated); nothing run on any live DB | `0009` and the job `chairfill-waitlist-scrub` (`20 3 * * *`) applied by Donia on the dev Supabase project (SQL Editor) and checked on 2026-11-07; real clinics still need `clinic:migrate-all`. Not committed |
 | 2026-11-06 (STOP follows the phone number) | `lib/sms-suppression.ts`; offers block SMS when any row of the clinic with the same number opted out; `createSmsSender().send()` is a fail-closed last gate for all texts; staff add/edit inherits `sms_opt_out` + date from a matching opted-out row and shows a note (dialog stays open); staff cannot clear the flag (tested); START clears all rows with the number (tested). No migration. Dentally sync is only a planner (not wired), noted in CLAUDE.md | see run at the end of this session | Not committed. Decide the inactive-waitlist retention rule (any scrub must keep phone + opt-out) |
 | 2026-11-06 (compliance: audit trail + 30-day purge) | Migration `0007_approval_audit_trail` (`recovery_pipeline.approved_by_name`, `approved_via`; `waitlist_offers.template_version`) and `0008_purge_closed_job_personal_data` (`purge_log`, `private.purge_closed_job_personal_data()`). `lib/template-versions.ts`; `approveBooking` now stores who/when/via for CRM board, Slack and the `/approve` email link; Activity page shows "Approved by X via Y at T". New pg_cron job `chairfill-purge` (daily 03:15 UTC) in the same `CRON_JOBS` list; `clinic:migrate-all` (re)schedules it after the migrations. Docs: CLAUDE.md "Compliance features", HOW_IT_WORKS | typecheck clean; 601 tests pass; local RLS_ALL_OK incl. a purge run on real Postgres (rolled back); build OK; no `lint` script exists | **Apply 0007 + 0008 yourself with `pnpm clinic:migrate-all`** (nothing was run against any live DB), then `select * from cron.job where jobname = 'chairfill-purge';`. Not committed |

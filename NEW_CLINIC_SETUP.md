@@ -75,10 +75,26 @@ If it stops with an error, fix the problem and run the same command again. Nothi
 
 Important: `clinic:migrate-all` only reaches databases that have a clinic file. The dev database in `.env.local` is migrated separately (Supabase SQL editor or `supabase db push`). Every new migration, including `monthly_reports`, must reach each clinic. New clinics get all of them through `clinic:setup`.
 
+## Dev email values to replace for a real clinic
+
+On the dev setup (live Brevo check, 2026-11-14) email was tested with Donia's personal Gmail as the sender. Never carry these values to a real clinic. Go through them one by one:
+
+| Setting | Dev value (do NOT reuse) | Real clinic value |
+| --- | --- | --- |
+| `SMTP_FROM` | Donia's personal Gmail (a free address; Brevo warns that it can land in spam) | A business address on a domain verified in Brevo (SlotRefill business email, or the clinic's own domain) |
+| Brevo sender | Gmail verified as a sender | Brevo → Senders, domains, IPs → add and authenticate the domain (DNS records), then add the business sender |
+| `SMTP_FROM_NAME` | `SlotRefill` | The clinic name, as patients know it |
+| `SMTP_USER` / `SMTP_PASS` | Dev Brevo login and the `slotrefill-dev` SMTP key | The clinic's own Brevo login and a NEW SMTP key (one key per clinic; never share a key between clinics or projects) |
+| `OPERATOR_ALERT_EMAIL` | Donia's Gmail | Donia's business email (alerts about the clinic's system) |
+| `SHADOW_TEST_EMAIL` | Donia's Gmail | A test address Donia controls, for the shadow week |
+
+Also: do NOT switch on "Activate for SMTP keys" (IP blocking) in Brevo; Vercel's IP addresses change, so it would block our emails. Send one real test email to yourself before going live.
+
 ## Checklist (copy for each clinic)
 
 - [ ] Supabase, Vercel and Brevo accounts created, you are a member
 - [ ] Brevo domain verified, sender added, SMTP key made
+- [ ] Dev email values replaced (see "Dev email values to replace for a real clinic": no Gmail sender, new SMTP key, business `SMTP_FROM`, alert and shadow emails)
 - [ ] Vercel project created, app URL noted
 - [ ] `clinics/<slug>.env` filled in
 - [ ] `pnpm clinic:setup ... --dry-run` is clean, then the real run is clean
