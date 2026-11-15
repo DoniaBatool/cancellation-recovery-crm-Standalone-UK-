@@ -13,6 +13,7 @@ const sourceSql = readFileSync(path.join(root, "supabase/migrations/202701010000
 const reportsSql = readFileSync(path.join(root, "supabase/migrations/20270101000006_monthly_reports.sql"), "utf8");
 const auditSql = readFileSync(path.join(root, "supabase/migrations/20270101000007_approval_audit_trail.sql"), "utf8");
 const scrubSql = readFileSync(path.join(root, "supabase/migrations/20270101000009_scrub_opted_out_waitlist.sql"), "utf8");
+const searchPathSql = readFileSync(path.join(root, "supabase/migrations/20270101000010_fix_block_reactivation_search_path.sql"), "utf8");
 const purgeSql = readFileSync(path.join(root, "supabase/migrations/20270101000008_purge_closed_job_personal_data.sql"), "utf8");
 const sha256 = (t: string) => createHash("sha256").update(t).digest("hex");
 
@@ -264,5 +265,11 @@ describe("schema sanity", () => {
 
   it("no code path other than the scrub function blanks a waitlist phone", () => {
     expect(code(purgeSql)).not.toMatch(/waitlist\s+SET/i);
+  });
+
+  it("0010 pins the search_path of the 0009 trigger function and changes nothing else", () => {
+    const sql = code(searchPathSql);
+    expect(sql).toContain("ALTER FUNCTION private.block_scrubbed_waitlist_reactivation() SET search_path = pg_catalog, pg_temp");
+    expect(sql).not.toMatch(/DELETE\s|UPDATE\s|INSERT\s|DROP\s|TRUNCATE|CREATE\s/i);
   });
 });

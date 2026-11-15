@@ -641,4 +641,13 @@ END $$;
 
 ROLLBACK;
 
+-- 0010: the 0009 trigger function has a fixed search_path.
+DO $$
+BEGIN
+  PERFORM test.assert_eq('0009 trigger function has a pinned search_path',
+    (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'private' AND p.proname = 'block_scrubbed_waitlist_reactivation'
+        AND p.proconfig IS NOT NULL AND 'search_path=pg_catalog, pg_temp' = ANY (p.proconfig)), 1);
+END $$;
+
 SELECT 'RLS_ALL_OK' AS result;
