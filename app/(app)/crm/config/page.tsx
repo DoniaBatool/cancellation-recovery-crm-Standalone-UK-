@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Download, Printer } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CopyField } from "@/components/ui/copy-field";
@@ -18,13 +17,6 @@ import { Alert } from "@/components/ui/alert";
 import { SettingsForm, type ConfigValues } from "./settings-form";
 
 export const metadata: Metadata = { title: "Settings" };
-
-const INTEGRATIONS = [
-  { name: "Dentally", note: "Read-only connection arrives in Phase 5." },
-  { name: "SMS (Twilio)", note: "Arrives in Phase 3." },
-  { name: "Email", note: "Arrives in Phase 3." },
-  { name: "Slack", note: "Arrives in Phase 3." },
-];
 
 export default async function SettingsPage() {
   const { clinic, role } = await requireSession();
@@ -126,26 +118,6 @@ export default async function SettingsPage() {
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Integrations</CardTitle>
-            <CardDescription>Connections are added in later phases.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="divide-y">
-              {INTEGRATIONS.map((i) => (
-                <li key={i.name} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
-                  <span className="font-medium">{i.name}</span>
-                  <span className="flex items-center gap-2 text-muted-foreground">
-                    {i.note}
-                    <Badge>Not set up</Badge>
-                  </span>
-                </li>
-              ))}
-            </ul>
           </CardContent>
         </Card>
       </div>

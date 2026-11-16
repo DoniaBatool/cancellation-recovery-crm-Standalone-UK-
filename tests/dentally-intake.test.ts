@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DentallyClient } from "@/lib/dentally/client";
+import { signDentallyBody } from "@/lib/dentally/signature";
 import { handleDentallyWebhook, parseDentallyEvent, runDentallyPoll } from "@/lib/engine/dentally-intake";
 import { makeWorld } from "./helpers/engine-world";
 
@@ -38,14 +39,32 @@ describe("parseDentallyEvent", () => {
 });
 
 describe("Dentally webhook", () => {
-  const input = (w: ReturnType<typeof makeWorld>, over: Record<string, unknown> = {}) => ({
-    secretFromPath: SECRET, expectedSecret: SECRET, payload: { event: "appointment.updated", appointment: { id: 501 } }, deps: w.deps, client: fakeClient(), ...over,
-  });
+  const input = (w: ReturnType<typeof makeWorld>, over: Record<string, unknown> = {}) => {
+    const { payload = { event: "appointment.updated", appointment: { id: 501 } }, ...rest } = over;
+    const rawBody = typeof payload === "string" ? payload : JSON.stringify(payload);
+    return { secretFromPath: SECRET, expectedSecret: SECRET, rawBody, signature: signDentallyBody(rawBody, SECRET), deps: w.deps, client: fakeClient(), ...rest };
+  };
 
   it("rejects a wrong secret and does nothing", async () => {
     const w = makeWorld({});
     expect((await handleDentallyWebhook(input(w, { secretFromPath: "wrong-wrong-wrong-wrong!" }))).status).toBe(401);
     expect(events(w)).toHaveLength(0);
+  });
+
+  it("rejects a missing, wrong or tampered signature even with the right URL secret", async () => {
+    const w = makeWorld({});
+    expect((await handleDentallyWebhook(input(w, { signature: null }))).status).toBe(401);
+    expect((await handleDentallyWebhook(input(w, { signature: "0".repeat(64) }))).status).toBe(401);
+    const good = input(w);
+    expect((await handleDentallyWebhook({ ...good, rawBody: good.rawBody.replace("501", "502") })).status).toBe(401);
+    expect(events(w)).toHaveLength(0);
+  });
+
+  it("accepts an upper-case signature and a body that is not JSON (answers 200, does nothing)", async () => {
+    const w = makeWorld({});
+    const ok = input(w);
+    expect((await handleDentallyWebhook({ ...ok, signature: ok.signature.toUpperCase() })).status).toBe(200);
+    expect((await handleDentallyWebhook(input(w, { payload: "not json" }))).status).toBe(200);
   });
 
   it("404 when no secret is configured", async () => {

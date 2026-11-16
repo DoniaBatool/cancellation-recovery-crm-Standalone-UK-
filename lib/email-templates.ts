@@ -1,4 +1,4 @@
-import { formatDayTime, formatGBP, formatSlot, formatTime } from "@/lib/format";
+import { formatDayTime, formatGBP, formatSlot, formatTime, timeZoneLabel } from "@/lib/format";
 
 // Email copy. Source: SYSTEM_BUILD_GUIDE.md §10.1.
 // Every email has a plain-text version plus simple inline-styled HTML (Arial, 15 px, navy button,
@@ -75,8 +75,8 @@ export function slotOfferEmail(i: SlotOfferEmailInput): EmailContent {
   const blocks: Block[] = [
     p(`Hi ${firstName(i.patientName)},`),
     p(
-      `A ${a(i.procedure)} appointment${who} has just become available on ${when}. ` +
-        `It's held for you for ${i.expiryMinutes} minutes (until ${formatTime(i.expiresAt, i.timeZone)}).`,
+      `A ${a(i.procedure)} appointment${who} has just become available on ${when} (${timeZoneLabel(i.timeZone)}). ` +
+        `This offer is open for ${i.expiryMinutes} minutes, until ${formatTime(i.expiresAt, i.timeZone)} (${timeZoneLabel(i.timeZone)}).`,
     ),
     button("Answer now", i.link),
   ];

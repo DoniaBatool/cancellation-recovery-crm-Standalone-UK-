@@ -35,7 +35,8 @@ describe("slotOfferEmail", () => {
     const mail = slotOfferEmail(base);
     expect(mail.subject).toBe("Earlier appointment available — Tue 27 Oct, 14:30");
     expect(mail.text).toContain("Hi Sarah,");
-    expect(mail.text).toContain("held for you for 30 minutes (until 10:30)");
+    expect(mail.text).toContain("(UK time)");
+    expect(mail.text).toContain("This offer is open for 30 minutes, until 10:30 (UK time)");
     expect(mail.text).toContain("Answer now: https://app.example.com/confirm/abc");
     expect(mail.html).toContain('href="https://app.example.com/confirm/abc"');
     expect(mail.html).toContain("#1e3a5f");

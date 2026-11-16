@@ -6,7 +6,7 @@ Everything lives in one Next.js app. There is no n8n. The full specification is 
 
 Status: **Phases 1 and 2 are done and checked live. Phases 3 to 6 are fully coded and tested with fixtures and mocks, and the whole loop passes a real end-to-end simulation against the dev database. What is left is checking them with real accounts (Brevo, Twilio, Slack, Dentally sandbox, Vercel) and the shadow-mode pilot (Phase 7).** See `PROGRESS.md`.
 
-> **Scope for now:** Slack (front desk) + email for offers and confirmations. SMS/Twilio is built but switched off to finish the project fast; it comes after the rest is complete (if time is left) or when a paying client asks (see `PROGRESS.md`).
+> **Scope (updated 2026-11-15):** Slack (front desk) + email + SMS (Twilio) for offers and confirmations. SMS is built; its live check runs on the first clinic's own Twilio account (Twilio's trial is not available from Pakistan). Until then reception can send the offer link by hand with "Copy offer link". WhatsApp is not built (later, when a client asks). See `PROGRESS.md`.
 
 ## Docs index
 
@@ -94,7 +94,7 @@ After `pnpm clinic:setup` prints them (replace `APP_URL` with the clinic's addre
 | Service | Address |
 | --- | --- |
 | Patient sign-up page / QR | `APP_URL/join/<clinic-slug>` |
-| Dentally webhook | `APP_URL/api/webhooks/dentally/<DENTALLY_WEBHOOK_SECRET>` |
+| Dentally webhook | `APP_URL/api/webhooks/dentally/<DENTALLY_WEBHOOK_SECRET>`. Also checked: the `X-Dentally-Signature` header (HMAC-SHA256 of the raw body, keyed with the same secret; set that same value as the webhook's secret in Dentally). A missing or wrong signature gets 401. |
 | Twilio incoming messages | `APP_URL/api/webhooks/twilio/inbound` |
 | Twilio status callback | `APP_URL/api/webhooks/twilio/status` |
 | Slack interactivity | `APP_URL/api/webhooks/slack/actions` |

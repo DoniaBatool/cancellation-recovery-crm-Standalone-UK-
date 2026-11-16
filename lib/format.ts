@@ -50,3 +50,8 @@ export function formatDayTime(value: DateInput, timeZone: string = DEFAULT_TIMEZ
   const weekday = new Intl.DateTimeFormat("en-GB", { timeZone, weekday: "short" }).format(toDate(value));
   return `${weekday} ${formatTime(value, timeZone)}`;
 }
+
+/** Label that goes next to a time so nobody reads it in their own zone, e.g. "UK time". */
+export function timeZoneLabel(timeZone: string = DEFAULT_TIMEZONE): string {
+  return timeZone === "Europe/London" ? "UK time" : timeZone;
+}

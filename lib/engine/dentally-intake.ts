@@ -2,6 +2,7 @@ import { safeEqual } from "@/lib/api/auth";
 import type { Json } from "@/lib/database.types";
 import { DentallyError, type DentallyClient } from "@/lib/dentally/client";
 import { isCancelledAppointment, normaliseAppointment, type NormalisedCancellation } from "@/lib/dentally/normalise";
+import { verifyDentallySignature } from "@/lib/dentally/signature";
 import { readDoctors } from "@/lib/doctors";
 import { nowOf, type ClinicRow, type ConfigRow, type EngineDeps } from "@/lib/engine/context";
 import { ingestCancellation } from "@/lib/engine/intake";
@@ -149,16 +150,27 @@ export function parseDentallyEvent(payload: unknown): DentallyEvent | null {
 export type WebhookInput = {
   secretFromPath: string;
   expectedSecret: string | null;
-  payload: unknown;
+  /** The body exactly as received: the signature is computed over these bytes. */
+  rawBody: string;
+  /** The X-Dentally-Signature header, if any. */
+  signature: string | null;
   deps: EngineDeps;
   client: DentallyClient | null;
 };
 
-/** Auth, record that a webhook arrived, answer 200, and do the work afterwards (deps.defer). */
+/** Auth (URL secret, then signature), record that a webhook arrived, answer 200, and do the work afterwards (deps.defer). */
 export async function handleDentallyWebhook(input: WebhookInput): Promise<{ status: 200 | 401 | 404 }> {
-  const { secretFromPath, expectedSecret, payload, deps, client } = input;
+  const { secretFromPath, expectedSecret, rawBody, signature, deps, client } = input;
   if (!expectedSecret) return { status: 404 };
   if (!safeEqual(secretFromPath, expectedSecret)) return { status: 401 };
+  if (!verifyDentallySignature(rawBody, expectedSecret, signature)) return { status: 401 };
+
+  let payload: unknown = null;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    // an unreadable body is ignored, but still answered with 200
+  }
 
   const dc = await loadDentallyClinic(deps);
   if (!dc) return { status: 200 };

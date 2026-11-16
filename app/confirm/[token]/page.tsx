@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { CalendarCheck, MapPin, Phone } from "lucide-react";
 import { getEngineDeps } from "@/lib/engine/runtime";
 import { loadOfferView } from "@/lib/engine/offer-view";
-import { formatSlot, formatTime } from "@/lib/format";
+import { formatSlot, formatTime, timeZoneLabel } from "@/lib/format";
 import { procedureLabel } from "@/lib/pricing";
 import { RATE_LIMITS } from "@/lib/rate-limit";
 import { isIpRateLimited } from "@/lib/rate-limit-request";
@@ -54,7 +54,7 @@ export default async function ConfirmPage({ params }: { params: Promise<{ token:
               <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">This slot is with {view.doctorName}, not your usual dentist.</p>
             ) : null}
             {view.expiresIso ? (
-              <p className="text-sm text-muted-foreground">Held for you until {formatTime(view.expiresIso, view.clinic.timezone)}.</p>
+              <p className="text-sm text-muted-foreground">Offer open until {formatTime(view.expiresIso, view.clinic.timezone)} ({timeZoneLabel(view.clinic.timezone)}).</p>
             ) : null}
             <div className="flex flex-col gap-1 text-sm text-muted-foreground">
               {view.clinic.address ? (
