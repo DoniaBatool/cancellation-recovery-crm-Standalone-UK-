@@ -55,7 +55,14 @@ describe("slotOfferEmail", () => {
 
   it("copes with no procedure or dentist", () => {
     const mail = slotOfferEmail({ ...base, procedure: null, dentist: null });
-    expect(mail.text).toContain("A appointment");
+    expect(mail.text).toContain("An appointment has just become available");
+    expect(mail.text).not.toContain("appointment appointment");
+  });
+
+  it("uses a or an before the treatment name", () => {
+    expect(slotOfferEmail({ ...base, procedure: "cleaning" }).text).toContain("A cleaning appointment");
+    expect(slotOfferEmail({ ...base, procedure: "Extraction" }).text).toContain("An extraction appointment");
+    expect(slotOfferEmail({ ...base, procedure: "implant" }).text).toContain("An implant appointment");
   });
 });
 

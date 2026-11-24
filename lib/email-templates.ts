@@ -53,7 +53,11 @@ const shortName = (name: string) => {
   const parts = name.trim().split(/\s+/);
   return parts.length < 2 ? (parts[0] ?? name) : `${parts[0]} ${parts[parts.length - 1]!.charAt(0).toUpperCase()}.`;
 };
-const a = (procedure: string | null) => (procedure ? procedure.toLowerCase() : "appointment");
+/** Start of the offer sentence: "A cleaning appointment", "An implant appointment", "An appointment". */
+const appointmentPhrase = (procedure: string | null) => {
+  const text = procedure ? `${procedure.toLowerCase()} appointment` : "appointment";
+  return `${/^[aeiou]/.test(text) ? "An" : "A"} ${text}`;
+};
 
 export type SlotOfferEmailInput = {
   clinicName: string;
@@ -75,7 +79,7 @@ export function slotOfferEmail(i: SlotOfferEmailInput): EmailContent {
   const blocks: Block[] = [
     p(`Hi ${firstName(i.patientName)},`),
     p(
-      `A ${a(i.procedure)} appointment${who} has just become available on ${when} (${timeZoneLabel(i.timeZone)}). ` +
+      `${appointmentPhrase(i.procedure)}${who} has just become available on ${when} (${timeZoneLabel(i.timeZone)}). ` +
         `This offer is open for ${i.expiryMinutes} minutes, until ${formatTime(i.expiresAt, i.timeZone)} (${timeZoneLabel(i.timeZone)}).`,
     ),
     button("Answer now", i.link),
