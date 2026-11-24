@@ -19,15 +19,23 @@ import {
  *
  *   strip spaces ( ) - ; must match ^\+?\d{7,15}$
  *   "+..." keep · "00..." -> "+..." · "0..." -> "+44..." · else "+" + digits
+ *   "+44 (0)7700 ..." -> the 0 after +44 is dropped
+ *   result must be E.164: "+", a country code that does not start with 0, 7 to 15 digits
+ *   UK (+44) numbers must have 9 or 10 digits after +44
  */
 export function normalizeUkPhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const cleaned = raw.replace(/[\s()-]/g, "");
   if (!/^\+?\d{7,15}$/.test(cleaned)) return null;
-  if (cleaned.startsWith("+")) return cleaned;
-  if (cleaned.startsWith("00")) return `+${cleaned.slice(2)}`;
-  if (cleaned.startsWith("0")) return `+44${cleaned.slice(1)}`;
-  return `+${cleaned}`;
+  let e164: string;
+  if (cleaned.startsWith("+")) e164 = cleaned;
+  else if (cleaned.startsWith("00")) e164 = `+${cleaned.slice(2)}`;
+  else if (cleaned.startsWith("0")) e164 = `+44${cleaned.slice(1)}`;
+  else e164 = `+${cleaned}`;
+  if (e164.startsWith("+440")) e164 = `+44${e164.slice(4)}`;
+  if (!/^\+[1-9]\d{6,14}$/.test(e164)) return null;
+  if (e164.startsWith("+44") && !/^\+44\d{9,10}$/.test(e164)) return null;
+  return e164;
 }
 
 // ---------------------------------------------------------------------------
@@ -137,13 +145,13 @@ const phoneOf = (missing: string) =>
   z.string({ error: missing }).transform((value, ctx) => {
     const phone = normalizeUkPhone(value);
     if (!phone) {
-      ctx.addIssue({ code: "custom", message: "Enter a valid phone number." });
+      ctx.addIssue({ code: "custom", message: "Enter a valid phone number, e.g. 07700 900123." });
       return z.NEVER;
     }
     return phone;
   });
 
-const phoneValue = phoneOf("Enter a valid phone number.");
+const phoneValue = phoneOf("Enter a valid phone number, e.g. 07700 900123.");
 
 const optionalPhone = z.preprocess(blank, phoneValue.optional());
 

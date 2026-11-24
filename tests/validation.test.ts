@@ -28,11 +28,14 @@ describe("normalizeUkPhone", () => {
     ["0044 7700 900001", "+447700900001"],
     ["447700900001", "+447700900001"],
     ["+1 415 555 0100", "+14155550100"],
+    ["+44 (0)7700 900001", "+447700900001"],
+    ["004407700900001", "+447700900001"],
+    ["020 7946 0958", "+442079460958"],
   ])("normalises %s", (input, expected) => {
     expect(normalizeUkPhone(input)).toBe(expected);
   });
 
-  it.each([null, undefined, "", "   ", "abc", "12345", "07700 90000x", "+", "1".repeat(16)])(
+  it.each([null, undefined, "", "   ", "abc", "12345", "07700 90000x", "+", "1".repeat(16), "+07700 900123", "+07700900123", "07700 9001", "07700 90012345", "+0 415 555 0100"])(
     "rejects %j",
     (input) => {
       expect(normalizeUkPhone(input as string | null | undefined)).toBeNull();
